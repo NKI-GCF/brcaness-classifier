@@ -35,14 +35,14 @@ if(opt$t==1){
   library(pamr)
   if(brcanum==1){
 
-    load('~/Classifier/ov.B1.RDa')
+    load('/app/ov.B1.RDa')
     #print(opt$i)
     newData<-as.data.frame(read_excel(opt$i,col_names = F,skip=1, sheet="segments" ))
     out<-with(ov.B1,pamr.predict(m,as.matrix(newData[,as.integer(opt$s)][c(1:3248)]),delta[sel],"posterior"))
 
   }else if (brcanum==2){
 
-    load('~/Classifier/ov.B2.RDa')
+    load('/app/ov.B2.RDa')
     #print(opt$i)
     newData<-as.data.frame(read_excel(opt$i,col_names = F,skip=1, sheet="segments"))
     out<-with(ov.B2,pamr.predict(m,as.matrix(newData[,as.integer(opt$s)][c(1:3248)]),delta[sel],"posterior"))
