@@ -147,16 +147,19 @@ RUN BWA_VERSION=0.7.17 \
   && echo "options(repos = c(CRAN='$MRAN'), download.file.method = 'libcurl')" >> /usr/local/lib/R/etc/Rprofile.site \
 
 ## install packages per one package should ensure depenendencies are installed as well
-  && Rscript -e "install.packages('BiocManager', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'));\
- BiocManager::install('BiocVersion', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'));\
- BiocManager::install('BiocGenerics', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'));\
- BiocManager::install('S4Vectors', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'));\
- BiocManager::install('BiocVersion', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'));\
- BiocManager::install('Iranges', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'));\
+ && Rscript -e "install.packages('BiocManager', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'));\
+ BiocManager::install('BiocVersion', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'), update=FALSE);\
+ BiocManager::install('BiocGenerics', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'), update=FALSE);\
+ BiocManager::install('S4Vectors', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'), update=FALSE);\
+ BiocManager::install('BiocVersion', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'), update=FALSE);\
+ BiocManager::install('IRanges', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'), update=FALSE);\
  install.packages('gtools', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'));\
  install.packages('readxl', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'));\
- install.packages('RODBC', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'));\
- install.packages('cli', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'));" \
+ install.packages('RODBC', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data')); \
+ install.packages('rjson', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data')); \
+ install.packages('optparse', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data')); \
+ install.packages('pamr', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data')); \
+ install.packages('zoo', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'));" \
 
 
 ################## cghseg #######################
