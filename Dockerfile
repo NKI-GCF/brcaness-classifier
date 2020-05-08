@@ -183,5 +183,5 @@ RUN BWA_VERSION=0.7.17 \
 
 COPY *.R *.Rda *.json *.Py ref/* *.sh /app/
 
-CMD ["bash align_count_and_classify.sh"]
+CMD ["bash /app/align_count_and_classify.sh"]
 
