@@ -89,7 +89,7 @@ rm_old() {
 out="/output/NKI_1M.txt"
 outxlsx="${out%.txt}.xlsx"
 
-chromInfo=/app/ref/chromInfo.txt
+chromInfo=/app/chromInfo.txt
 
 ref_mismatch() {
   cp $chromInfo /output/

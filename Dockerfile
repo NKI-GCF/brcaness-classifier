@@ -181,7 +181,7 @@ RUN BWA_VERSION=0.7.17 \
 
   && mkdir /app
 
-COPY *.R *.Rda *.json *.Py ref/* *.sh /app/
+COPY *.sh *.R *.Rda *.json *.Py ref bac SeqCNV mappability /app/
 
-CMD ["bash /app/align_count_and_classify.sh"]
+CMD ["/app/align_count_and_classify.sh"]
 

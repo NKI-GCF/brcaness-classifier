@@ -2,13 +2,13 @@
 sink("create_NKI_1m_sessioninfo.txt")
 sink("create_NKI_1m_sessioninfo.txt", type="message")
 
-  source(paste0("/app/SeqCNV/SeqCNV.R"), chdir=TRUE)
+  source(paste0("/app/SeqCNV.R"))
 
-  mappa65 <- paste0("/app/mappability/GRCh38_65bp-q15-20k.bed.gz")
+  mappa65 <- paste0("/app/GRCh38_65bp-q15-20k.bed.gz")
   print(paste("Using mappabilitybility file", mappa65))
   stopifnot(file.exists(mappa65))
 
-  blacklist <- paste0("/app/mappability/GRCh38-blacklist-nochr.bed")
+  blacklist <- paste0("/app/GRCh38-blacklist-nochr.bed")
   print(paste("Using mappabilitybility file", blacklist))
   stopifnot(file.exists(blacklist))
 
@@ -40,7 +40,7 @@ sink("create_NKI_1m_sessioninfo.txt", type="message")
   rd <- list(ratios=ratios[!data$anno$black & !is.na(data$anno$mappa) & data$anno$mappa > .2, ], anno=data$anno[!data$anno$black & !is.na(data$anno$mappa) & data$anno$mappa > .2, ])
 
   #load bac nki platform
-  read.delim(paste0("/app/bac/platformnki_lifthg38-nochr.txt"), header=T)->bac
+  read.delim(paste0("/app/platformnki_lifthg38-nochr.txt"), header=T)->bac
 
   # fix factor order
   bac$om <- droplevels(bac$om)
