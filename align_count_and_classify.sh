@@ -3,6 +3,7 @@
 
 set -e
 set -o noclobber
+set -x
 
 
 die() {
@@ -12,20 +13,20 @@ die() {
 
 # check that mount points are available and have right permissions
 for d in input ref; do
-  [ -d /$d -a -r "/$d" -a ! -w "/$d" ] || die "Required: -v \$path_to_${d}:/$d:ro"
+  [ -d /$d -a -r /$d -a ! -w /$d ] || die "Required: -v \$path_to_${d}:/$d:ro"
 done
 
-[ -d /output -a -r "/output" -a -w "/output" ] ||
+[ -d /output -a -r /output -a -w /output ] ||
     die "Required: -v \$path_to_output:/output:rw"
 
 # config mount is optional
-if [ -d "/config" ]; then
-  [ -d /config -a -r "/config" -a ! -w "/config" ] ||
-    die "Required: -v \$path_to_config:/config:ro"
+if [ -d /config ]; then
+  [ -r /config -a ! -w /config ] ||
+    die "Read-only required for config: -v \$path_to_config:/config:ro"
 
-  # options are read from the config.txt file.
+  # options are read from the config.txt file. Since we're using eval here, only allow simpple variable assignment,
   if [ -r "/config/config.txt" ]; then
-    for set_config in $(sed -n -r "s/^[ \t]*([A-Z_]{2,})[= \t]+([A-Za-z0-9._-]{1,})/\1=\2/p" /config/config.txt); do
+    for set_config in $(sed -n -r "s/^[ \t]*([A-Z][A-Za-z0-9_]+)[= \t]+([A-Za-z0-9._-]{1,})/\1=\2/p" /config/config.txt); do
       eval "$set_config"
     done
   fi
@@ -50,12 +51,14 @@ fi
 [ -z "$CN" ] && CN="NKI"
 [ -z "$PL" ] && PL="Illumina"
 
-# The filename can differ, checks below ensure the file is Ensembl GRCh37.75
-[ -z "$FASTA" ] && FASTA="Homo_sapiens.GRCh37.75.dna.primary_assembly.fa"
+[ -z "$BUILD" ] && BUILD="GRCh38"
+
+# The filename can differ, checks below ensure the file is Ensembl build
+[ -z "$FASTA" ] && FASTA="Homo_sapiens.${BUILD}.dna.primary_assembly.fa"
 
 # These should not be changed for the classifier.
-[ -z "$quality_cutoff" ] && quality_cutoff=37
-[ -z "$kbin_size" ] && kbin_size=20
+[ -z "$QUALITY_CUTOFF" ] && QUALITY_CUTOFF=15
+[ -z "$KBIN_SIZE" ] && KBIN_SIZE=20
 
 
 # check that all fasta and alignment prerequisites are present
@@ -83,14 +86,14 @@ rm_old() {
   done
 }
 
-out="/output/NKI_1M_output.txt"
+out="/output/NKI_1M.txt"
 outxlsx="${out%.txt}.xlsx"
 
 chromInfo=/app/ref/chromInfo.txt
 
 ref_mismatch() {
   cp $chromInfo /output/
-  die "Fasta .fai does not have the same order orlengths of contigs. Is it GrCh37.75?\n"\
+  die "Fasta .fai does not have the same order orlengths of contigs. Is it ${BUILD}?\n"\
       "See chromInfo.txt in output file for the expected contigs and lengths."
 }
 
@@ -103,13 +106,13 @@ if [ "$CHECKSUM" != "false" ]; then
   sha256=$(cat "${bwaindex}" | sed '/^>/!b;s/[ \t].*$//;s/^/\t/' | tr -d "\r\n" |
     sha256sum | cut -d " " -f 1)
 
-  [ "$sha256" = "fc1a03150e12c259cebe37aa6295ed612eee71cd643e529986697b7f13cc94c9" ] || ref_mismatch
+  [ "$sha256" = "257604babc88d1a24bffa13f41c39172681c000a1dd396b32ebdcde0d1fa78f6" ] || ref_mismatch
 fi
 
-bins=/tmp/windows-${kbin_size}000.txt
-[ -f $bins ] || bedtools makewindows -g "${bwaindex}.fai" -w ${kbin_size}000 > "${bins}"
+bins=/tmp/windows-${KBIN_SIZE}000.txt
+[ -f $bins ] || bedtools makewindows -g "${bwaindex}.fai" -w ${KBIN_SIZE}000 > "${bins}"
 
-gccontent="/tmp/gccontent-${kbin_size}000.txt"
+gccontent="/tmp/gccontent-${KBIN_SIZE}000.txt"
 [ -f "$gccontent" ] || bedtools nuc -fi "${bwaindex}" -bed "${bins}" > "$gccontent"
 
 mkdir -p /output/log
@@ -138,7 +141,7 @@ while read fastq ID SM LB; do
 
  [ -z "$LB" ] && LB="$SM"
 
- mapqcount="/output/${LB}-counts-${kbin_size}000-q${quality_cutoff}.txt"
+ mapqcount="/output/${LB}-counts-${KBIN_SIZE}000-q${QUALITY_CUTOFF}.txt"
  bam="/output/${LB%.bam}.bam"
 
  {
@@ -168,7 +171,7 @@ while read fastq ID SM LB; do
   if [ ! -f "$mapqcount" ]; then
    echo "counting $bam into $mapqcount" 1>&2 &&
 
-   samtools view -q $quality_cutoff -bu "$bam" |
+   samtools view -q $QUALITY_CUTOFF -bu "$bam" |
    bedtools coverage -counts -sorted -g $chromInfo -a "${bins}" -b stdin |
    bedtools sort > "$mapqcount"
    if [ $(cat "$mapqcount" | wc -l) -ne $(cat "$bins" | wc -l) ]; then
@@ -178,22 +181,22 @@ while read fastq ID SM LB; do
  }&
 done < <(egrep -v "^(#.*)?$" /tmp/files.txt)
 
-while [ $(jobs -p | wc -l) -ne 1 ]; do
+while [ $(jobs -p | tee /dev/stderr | wc -l) -ne 0 ]; do
  sleep 60s
 done
 
 # create classifier file
 cd /output
-mkdir -p qc20K
-[ -f "$out" ] || Rscript /app/create_NKI_1m.R 20 2>&1 | tee /output/log/create_NKI_1m.log
+mkdir -p qc${KBIN_SIZE}K
+[ -f "$out" ] || Rscript /app/create_NKI_1m.R ${KBIN_SIZE} 2>&1 | tee /output/log/create_NKI_1m.log
 
-[ -f "$outxlsx" ] || Rscript /app/cmd_EL.R "$out"
+#[ -f "$outxlsx" ] || Rscript /app/cmd_EL.R "$out"
 
 # next: classifier
-Rscript /app/classifierR.R \
- -i "$outxlsx" \
- -s $(cat /tmp/files.txt | wc -l) \
- -t "$TYPE" \
- -o "/output/NKI_1M_${TYPE}_classifier" \
- -b "$BRCA_NUM"
+#Rscript /app/classifierR.R \
+# -i "$outxlsx" \
+# -s $(cat /tmp/files.txt | wc -l) \
+# -t "$TYPE" \
+# -o "/output/NKI_1M_${TYPE}_classifier" \
+# -b "$BRCA_NUM"
 

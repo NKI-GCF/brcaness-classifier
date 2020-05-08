@@ -1,50 +1,29 @@
 #!/usr/bin/Rscript
-initial.options <- commandArgs(trailingOnly = FALSE)
-file.arg.name <- "--file="
-script.name <- sub(file.arg.name, "", initial.options[grep(file.arg.name, initial.options)])
-SCRIPTDIR <- dirname(script.name)
+sink("create_NKI_1m_sessioninfo.txt")
+sink("create_NKI_1m_sessioninfo.txt", type="message")
 
-# from p.schouten/run311_312/
-source(paste0(SCRIPTDIR, "/SeqCNV/SeqCNV.R"), chdir=TRUE)
-options(stringsAsFactors=TRUE) # needed for loadCovData
+  source(paste0("/app/SeqCNV/SeqCNV.R"), chdir=TRUE)
 
-opts <- commandArgs(trailingOnly = TRUE);
-print(paste0("options: '", paste(opts, collapse="', '"), "'"))
-usage <- "Rscript create_NKI_1m.R <length> [mm10/mm9/hg19(=default) [--noplot]]";
-doplot <- TRUE
+  mappa65 <- paste0("/app/mappability/GRCh38_65bp-q15-20k.bed.gz")
+  print(paste("Using mappabilitybility file", mappa65))
+  stopifnot(file.exists(mappa65))
 
-if (length(opts) < 1) {
-  print(usage);
-} else {
-  bw <- opts[1];
-  if (length(opts) > 1) {
-    ref <- opts[2]
-    if ((length(opts) > 2) & (opts[3] == "--noplot")) {
-      doplot <- FALSE
-    }
-  } else {
-    ref <- "hg19"
-  }
-  mapa51 <- paste0(SCRIPTDIR, "/mapa/mapa51-", bw,"K-", ref, ".bed.gz")
-  print(paste("Using mapability file", mapa51))
-  stopifnot(file.exists(mapa51))
-
-  blacklist <- paste0(SCRIPTDIR, "/mapa/", ref, "-blacklist-nochr.bed")
-  print(paste("Using mapability file", blacklist))
+  blacklist <- paste0("/app/mappability/GRCh38-blacklist-nochr.bed")
+  print(paste("Using mappabilitybility file", blacklist))
   stopifnot(file.exists(blacklist))
 
-  mapa <- read.delim(gzfile(mapa51), header=FALSE, col.names=c("chr","start","end","mapa"))
+  mappability <- read.delim(gzfile(mappa65), header=FALSE, col.names=c("chr","start","end","mappos", "mappa"))
   black <- read.delim(blacklist, header=F, col.names=c("chr", "start", "end"))
 
-  f <- findCovFiles(pattern=paste0(".*counts-",bw, "000-q37.txt"))
+  f <- findCovFiles(pattern=paste0(".*counts-20000-q15.txt"))
   stopifnot(length(f) > 0)
-  gc <- read.delim(paste0("/tmp/gccontent-",bw,"000.txt"))[,c(1,2,3,5)]
+  gc <- read.delim(paste0("/tmp/gccontent-20000.txt"))[,c(1,2,3,5)]
   colnames(gc) <- c("chr","start","end","gc")
 
-  data <- loadCovData(f, gc=gc, mapa=mapa, black=black, exclude="MT", datacol=4)
+  data <- loadCovData(f, gc=gc, mappa=mappability, black=black, exclude="MT", datacol=4)
   print("finished loading data")
 
-  colnames(data$cov) <- gsub(paste0("_L00[1-8]-s-counts-", bw, "000-q37.txt"),"",f)
+  colnames(data$cov) <- gsub(paste0("_L00[1-8]-s-counts-20000-q15.txt"),"",f)
   #fix the names
   sampnames <- paste(sub("(_[CGAT]{6,}).*","\\1", sub("^.*/","", colnames(data$cov)), perl=T), paste0(round(colSums(data$cov) / 1e6,1),"M"), sep="_")
   colnames(data$cov) <- sampnames
@@ -52,20 +31,20 @@ if (length(opts) < 1) {
   usepoints <-  !(data$anno$black | data$anno$chr %in% c("X", "Y", "MT"))
 
   ratios <- sapply(1:ncol(data$cov), function(s) {
-    if(doplot == TRUE) {
-      plots <- paste0("qc", bw, "K/", colnames(data$cov)[s], ".png")
-    } else {
-      plots <- NULL
-    }
-    tng(data.frame(count=data$cov[,s], gc=data$anno$gc, mapa=data$anno$mapa), use=usepoints, plot=plots)
+    plots <- paste0("qc20K/", colnames(data$cov)[s], ".png")
+    tng(data.frame(count=data$cov[,s], gc=data$anno$gc, mappa=data$anno$mappa), use=usepoints, plot=plots)
   })
   print("finished creating ratios")
 
   colnames(ratios) <- sampnames
-  rd <- list(ratios=ratios[!data$anno$black & !is.na(data$anno$mapa) & data$anno$mapa > .2, ], anno=data$anno[!data$anno$black & !is.na(data$anno$mapa) & data$anno$mapa > .2, ])
+  rd <- list(ratios=ratios[!data$anno$black & !is.na(data$anno$mappa) & data$anno$mappa > .2, ], anno=data$anno[!data$anno$black & !is.na(data$anno$mappa) & data$anno$mappa > .2, ])
 
   #load bac nki platform
-  read.delim(paste0(SCRIPTDIR, "/bac/platformnki_lift", ref, "-nochr.txt"), header=T)->bac
+  read.delim(paste0("/app/bac/platformnki_lifthg38-nochr.txt"), header=T)->bac
+
+  # fix factor order
+  bac$om <- droplevels(bac$om)
+  bac$om <- factor(droplevels(bac$om), levels=c(1:22, "X", "Y"))
   bac <- bac[bac$Start > 0,]
   bacr <- RangedData(IRanges(start=bac$Start, end=bac$End), space=bac$om, id=bac$Order, clone=bac$Clone)
 
@@ -86,9 +65,12 @@ if (length(opts) < 1) {
   #final table
   tab <- data.frame(
   bac,
-  as.data.frame(RangedData(bacr1m)),
+  as.data.frame(bacr1m),
   tobac[match(as.character(bac$Order), rownames(tobac)),])
   dir <- getwd()
-  write.table(tab, file=paste0("NKI_1M_", gsub("^.*/([^/]+)$", "\\1", getwd()), ".txt"), sep="\t", quote=F, row.names=F)
-}
+  write.table(tab, file=paste0("NKI_1M.txt"), sep="\t", quote=F, row.names=F)
+
+sessioInfo()
+sink(type="message")
+sink()
 

@@ -2,7 +2,7 @@ findCovFiles <- function(pattern,...) {
 	list.files(pattern=pattern, ...)
 }
 
-loadCovData <- function(files, gc=NULL, mapa=NULL, black=NULL, excludechr=NULL, datacol=5) {
+loadCovData <- function(files, gc=NULL, mappa=NULL, black=NULL, excludechr=NULL, datacol=5) {
 	d <- lapply(files, read.delim, header=F)
 	if (length(files) != 1) {
 		cnames <- removeCommonFix(files)
@@ -37,8 +37,8 @@ loadCovData <- function(files, gc=NULL, mapa=NULL, black=NULL, excludechr=NULL, 
 	if(!is.null(gc)) {
 		anno$gc <- gc[match(annoid, paste(gc$chr, gc$start, gc$end, sep=":")),"gc"]
 	}
-	if(!is.null(mapa)) {
-		anno$mapa <- mapa[match(annoid, paste(mapa$chr, mapa$start, mapa$end, sep=":")),"mapa"]
+	if(!is.null(mappa)) {
+		anno$mappa <- mappa[match(annoid, paste(mappa$chr, mappa$start, mappa$end, sep=":")),"mappa"]
 	}
 	if(!is.null(black)) {
 		suppressPackageStartupMessages(require(IRanges))
@@ -124,7 +124,7 @@ makeRatios <- function(cnv, reference=c("columns", "rowmedian", "rowmeans", "col
 }
 
 
-tng <- function(df, use, correctmapa=TRUE,  plot=NULL, verbose=T) {
+tng <- function(df, use, correctmappa=TRUE,  plot=NULL, verbose=T) {
 	
 	#tests
 	if(!is.logical(use) && length(use) ==nrow(df))
@@ -148,7 +148,7 @@ tng <- function(df, use, correctmapa=TRUE,  plot=NULL, verbose=T) {
 	# gc fits  also excludes the low mappability data
 
 	#correct gc using double lowess
-	gcuse <- (use & !is.na(df$mapa) & df$mapa > .8 & !is.na(df$gc) & df$gc > 0)
+	gcuse <- (use & !is.na(df$mappa) & df$mappa > .8 & !is.na(df$gc) & df$gc > 0)
 	rough <- loess(count ~ gc, data=df, subset=gcuse, span = 0.03)
 	i <- seq(0, 1, by = 0.001)
 	final <- loess(predict(rough, i) ~ i, span = 0.3)
@@ -162,19 +162,19 @@ tng <- function(df, use, correctmapa=TRUE,  plot=NULL, verbose=T) {
 		points(df$gc, normv, col=2, pch=".")
 	}
 
-	#correct mapa using linear function that intercepts zero
-	if(correctmapa) {
-	mapause <- (use & !is.na(df$mapa))
-	lm(countgcloess~0+mapa, data=df, subset=mapause) ->fll
+	#correct mappa using linear function that intercepts zero
+	if(correctmappa) {
+	mappause <- (use & !is.na(df$mappa))
+	lm(countgcloess~0+mappa, data=df, subset=mappause) ->fll
 	if(verbose) print(summary(fll))
 
 	if (plot) {
-		plot(countgcloess ~ mapa, data=df, subset=mapause, ylim=quantile(df$countgcloess, c(0.0001, .999), na.rm=T), pch=".")
-		points(countgcloess ~ mapa, data=df, subset=!mapause, col=rgb(1,0,0,.3), pch=".")
+		plot(countgcloess ~ mappa, data=df, subset=mappause, ylim=quantile(df$countgcloess, c(0.0001, .999), na.rm=T), pch=".")
+		points(countgcloess ~ mappa, data=df, subset=!mappause, col=rgb(1,0,0,.3), pch=".")
 		abline(0, fll$coef, col=2)
 	}
 
-	return(log2(df$countgcloess / (df$mapa * fll$coef)))
+	return(log2(df$countgcloess / (df$mappa * fll$coef)))
 	} else {
 		#corerct agains median value (exluding sex chr)
 		log2(df$countgcloess / median(df$countgcloess[use], na.rm=T))
@@ -268,7 +268,7 @@ toHMMCopy <- function(covdata) {
 	require("IRanges")
 	ran <- IRanges(start=covdata$anno$start, end=covdata$anno$end)
 	sapply(1:ncol(covdata$cov), function(s) {
-		RangedData(ran, space=covdata$anno$chr, reads=covdata$cov[,s], gc=covdata$anno$gc, map=covdata$anno$mapa)
+		RangedData(ran, space=covdata$anno$chr, reads=covdata$cov[,s], gc=covdata$anno$gc, map=covdata$anno$mappa)
 	})
 }
 
