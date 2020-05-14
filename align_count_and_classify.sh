@@ -86,7 +86,7 @@ rm_old() {
   done
 }
 
-out="/output/NKI_1M.txt"
+out="/output/NKI_1m${TAG}.txt"
 outxlsx="${out%.txt}.xlsx"
 
 chromInfo=/app/chromInfo.txt
@@ -109,11 +109,13 @@ if [ "$CHECKSUM" != "false" ]; then
   [ "$sha256" = "257604babc88d1a24bffa13f41c39172681c000a1dd396b32ebdcde0d1fa78f6" ] || ref_mismatch
 fi
 
-bins=/tmp/windows-${KBIN_SIZE}000.txt
-[ -f $bins ] || bedtools makewindows -g "${bwaindex}.fai" -w ${KBIN_SIZE}000 > "${bins}"
+bins=windows-${KBIN_SIZE}000.txt
+[ -f "/input/$bins" ] && cp "/input/$bins" "/tmp/$bins" ||
+  bedtools makewindows -g "${bwaindex}.fai" -w ${KBIN_SIZE}000 > "/tmp/${bins}"
 
-gccontent="/tmp/gccontent-${KBIN_SIZE}000.txt"
-[ -f "$gccontent" ] || bedtools nuc -fi "${bwaindex}" -bed "${bins}" > "$gccontent"
+gccontent="gccontent-${KBIN_SIZE}000.txt"
+[ -f "/input/$gccontent" ] && cp "/input/$gccontent" "/tmp/$gccontent" ||
+  bedtools nuc -fi "${bwaindex}" -bed "/tmp/${bins}" > "/tmp/$gccontent"
 
 mkdir -p /output/log
 
@@ -126,14 +128,13 @@ if [ -r "/config/files.txt" ]; then
     [ -f "/input/$f" ] || die "files.txt:$f not found"
   done < <(egrep -v "^(# .*)?$" /tmp/files.txt)
 else
-  ls -1 /input/*/*.fastq.gz > /tmp/files.txt
+  find /input/ -type f -name "*.fastq.gz" | sed 's~/input/~~' > /tmp/files.txt
 fi
+now_running=0
+(
 while read fastq ID SM LB; do
-
- if [ $(jobs | wc -l) -gt $PARALLEL ]; then
-   sleep 60s
-   continue
- fi
+ now_running=$(((now_running+1)%(PARALLEL+1)))
+ [ $now_running -eq 0 ] && wait
 
  [ -z "$ID" ] && ID="$(mktemp -u | cut -d "." -f2)"
 
@@ -148,7 +149,7 @@ while read fastq ID SM LB; do
   if [ -f "$bam.bai" ]; then
    samtools quickcheck "$bam" || rm_old "$bam.bai"
    if [ -f "$mapqcount" ]; then
-    if [ $(cat "$mapqcount" | wc -l) -ne $(cat "$bins" | wc -l) ]; then
+    if [ $(cat "$mapqcount" | wc -l) -ne $(cat "/tmp/$bins" | wc -l) ]; then
      rm_old "$mapqcount" "/output/log/${LB}_mapq_counts.log"
     fi
    fi
@@ -160,9 +161,9 @@ while read fastq ID SM LB; do
    # noclobber is active: ensure mapqcount can be donw
    [ -f "$mapqcount" ] && rm_old "$mapqcount" "/output/log/${LB}_mapq_counts.log"
 
-   bwa mem -M -t $THREADS -R "@RG\tID:$ID\tSM:$SM\tLB:$LB\tCN:$CN\tPL:$PL" "$bwaindex" "/input/$fastq" |
+   (bwa mem -M -t $THREADS -R "@RG\tID:$ID\tSM:$SM\tLB:$LB\tCN:$CN\tPL:$PL" "$bwaindex" "/input/$fastq" |
    samtools sort -m $MEM - -o "$bam" &&
-   samtools index "$bam" &> "/output/log/${LB}_alignment.log"
+   samtools index "$bam") &> "/output/log/${LB}_alignment.log"
 
   fi
 
@@ -172,23 +173,25 @@ while read fastq ID SM LB; do
    echo "counting $bam into $mapqcount" 1>&2 &&
 
    samtools view -q $QUALITY_CUTOFF -bu "$bam" |
-   bedtools coverage -counts -sorted -g $chromInfo -a "${bins}" -b stdin |
+   bedtools coverage -counts -sorted -g $chromInfo -a "/tmp/${bins}" -b stdin |
    bedtools sort > "$mapqcount"
-   if [ $(cat "$mapqcount" | wc -l) -ne $(cat "$bins" | wc -l) ]; then
+   if [ $(cat "$mapqcount" | wc -l) -ne $(cat "/tmp/$bins" | wc -l) ]; then
      die "bincount nr of lines does not match mapqcounts"
    fi
   fi
  }&
 done < <(egrep -v "^(#.*)?$" /tmp/files.txt)
 
-while [ $(jobs -p | tee /dev/stderr | wc -l) -ne 0 ]; do
- sleep 60s
+# wait for completion
+for i in seq 0 $PARALLEL; do
+  wait 2> /dev/null || true
 done
+)
 
 # create classifier file
 cd /output
 mkdir -p qc${KBIN_SIZE}K
-[ -f "$out" ] || Rscript /app/create_NKI_1m.R ${KBIN_SIZE} 2>&1 | tee /output/log/create_NKI_1m.log
+[ -f "$out" ] || Rscript /app/create_NKI_1m.R ${KBIN_SIZE} ${BLACKLIST} NKI_1m${TAG} 2>&1 | tee /output/log/create_NKI_1m${TAG}.log
 
 #[ -f "$outxlsx" ] || Rscript /app/cmd_EL.R "$out"
 
