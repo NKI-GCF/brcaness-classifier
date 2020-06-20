@@ -1,11 +1,13 @@
 #!/usr/bin/Rscript
 opts <- commandArgs(trailingOnly = TRUE);
 
-stopifnot(length(opts) == 3)
+stopifnot(length(opts) == 5)
 
 bw <- opts[1]
-blacklist = opts[2]
-outbase <- opts[3]
+mapq <- opts[2]
+seqlen <- opts[3]
+blacklist = opts[4]
+outbase <- opts[5]
 
 log_file <- file(paste0("/output/log/create_", outbase, "_sessioninfo.txt"), open="wt")
 sink(log_file)
@@ -14,18 +16,18 @@ sink(log_file, type="message")
 
   source("/app/SeqCNV.R")
 
-  mappa65 <- paste0("/app/GRCh38_65bp-q15-", bw, "k.bed.gz")
-  print(paste("Using mappabilitybility file", mappa65))
-  stopifnot(file.exists(mappa65))
+  mappa <- paste0("/app/GRCh38_", seqlen, "bp-q", mapq, "-", bw, "k.bed.gz")
+  print(paste("Using mappabilitybility file", mappa))
+  stopifnot(file.exists(mappa))
 
   blacklist <- paste0("/app/", blacklist)
   print(paste("Using mappabilitybility file", blacklist))
   stopifnot(file.exists(blacklist))
 
-  mappability <- read.delim(gzfile(mappa65), header=FALSE, col.names=c("chr","start","end","mappos", "mappa"), skip=1)
+  mappability <- read.delim(gzfile(mappa), header=FALSE, col.names=c("chr","start","end","mappos", "mappa"), skip=1)
   black <- read.delim(blacklist, header=F, col.names=c("chr", "start", "end"))
 
-  f <- findCovFiles(pattern=paste0(".*counts-", bw, "000-q15.txt"))
+  f <- findCovFiles(pattern=paste0(".*counts-", bw, "000-q", mapq, ".txt"))
   stopifnot(length(f) > 0)
   gc <- read.delim(paste0("/tmp/gccontent-", bw, "000.txt"))[,c(1,2,3,5)]
   colnames(gc) <- c("chr","start","end","gc")
@@ -33,7 +35,7 @@ sink(log_file, type="message")
   data <- loadCovData(f, gc=gc, mappa=mappability, black=black, exclude="MT", datacol=4)
   print("finished loading data")
 
-  colnames(data$cov) <- gsub(paste0("_L00[1-8]-s-counts-", bw, "000-q15.txt"),"",f)
+  colnames(data$cov) <- gsub(paste0("_L00[1-8]-s-counts-", bw, "000-q", mapq, ".txt"),"",f)
   #fix the names
   sampnames <- paste(sub("(_[CGAT]{6,}).*","\\1", sub("^.*/","", colnames(data$cov)), perl=T), paste0(round(colSums(data$cov) / 1e6,1),"M"), sep="_")
   colnames(data$cov) <- sampnames

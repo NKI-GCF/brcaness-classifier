@@ -11,7 +11,7 @@ die() {
   exit 1
 }
 
-# check that mount points are available and have right permissions
+# check that mount points are available and have correct permissions
 for d in input ref; do
   [ -d /$d -a -r /$d -a ! -w /$d ] || die "Required: -v \$path_to_${d}:/$d:ro"
 done
@@ -24,7 +24,7 @@ if [ -d /config ]; then
   [ -r /config -a ! -w /config ] ||
     die "Read-only required for config: -v \$path_to_config:/config:ro"
 
-  # options are read from the config.txt file. Since we're using eval here, only allow simpple variable assignment,
+  # options are read from the config.txt file. eval!: only allow simple var assignments.
   if [ -r "/config/config.txt" ]; then
     for set_config in $(sed -n -r "s/^[ \t]*([A-Z][A-Za-z0-9_]+)[= \t]+([A-Za-z0-9._-]{1,})/\1=\2/p" /config/config.txt); do
       eval "$set_config"
@@ -33,7 +33,7 @@ if [ -d /config ]; then
 
   # If a run was interupted and you need to continue where you left off
   # remove broken files, lockfile and set CONTINUE=true
-  # samtools quickcheck and presence of .bai file may catch some errors
+  # the pipeline may also catch errors and replace corrupt files.
   [ "$(ls -1a /output | wc -l)" -ne 2 -a "$CONTINUE" != "true" ] && die "Ouput dir is not empty"
 
 fi
@@ -46,6 +46,7 @@ fi
 [ -z "$PARALLEL" ] && PARALLEL=2
 [ -z "$THREADS" ] && THREADS=4
 [ -z "$MEM" ] && MEM=2G
+[ -z "$SKIP_CRAM" ] && SKIP_CRAM=false
 
 # for readgroup. Not sure if the classifier is valid on a different platform
 [ -z "$CN" ] && CN="NKI"
@@ -58,7 +59,9 @@ fi
 
 # These should not be changed for the classifier.
 [ -z "$QUALITY_CUTOFF" ] && QUALITY_CUTOFF=15
+[ -z "$SEQUENCE_LENGTH" ] && SEQUENCE_LENGTH=65
 [ -z "$KBIN_SIZE" ] && KBIN_SIZE=20
+
 
 
 # check that all fasta and alignment prerequisites are present
@@ -81,6 +84,7 @@ touch $lock || die "no write access on /output directory"
 rm_old() {
   [ "$CONTINUE" = "true" ] || die "Overwriting file(s) only allowed with CONTINUE=true:\n$@"
   for f in "$@"; do
+    [ -f "$f" ] || continue;
     [ "$f" -nt "$lock" ] && die "File $f was created twice in the pipeline (files.txt has duplicates?)"
     rm "$f"
   done
@@ -93,7 +97,7 @@ chromInfo=/app/chromInfo.txt
 
 ref_mismatch() {
   cp $chromInfo /output/
-  die "Fasta .fai does not have the same order orlengths of contigs. Is it ${BUILD}?\n"\
+  die "Fasta .fai does not have the same order or lengths of contigs. Is it ${BUILD}?\n"\
       "See chromInfo.txt in output file for the expected contigs and lengths."
 }
 
@@ -103,7 +107,7 @@ cmp <(cut -f -2 "${bwaindex}.fai") $chromInfo || ref_mismatch
 if [ "$CHECKSUM" != "false" ]; then
   # Test reference sequence. Comments or newline placements are ignored.
   echo "Verifying reference genome checksum.."
-  sha256=$(cat "${bwaindex}" | sed '/^>/!b;s/[ \t].*$//;s/^/\t/' | tr -d "\r\n" |
+  sha256=$(sed '/^>/!b;s/[ \t].*$//;s/^/\t/' "${bwaindex}" | tr -d "\r\n" |
     sha256sum | cut -d " " -f 1)
 
   [ "$sha256" = "257604babc88d1a24bffa13f41c39172681c000a1dd396b32ebdcde0d1fa78f6" ] || ref_mismatch
@@ -125,59 +129,90 @@ if [ -r "/config/files.txt" ]; then
   cp /config/files.txt /tmp/files.txt
   # so we don't have to wait for the error.
   while read f etc; do
-    [ -f "/input/$f" ] || die "files.txt:$f not found"
+    [ -z "$f" ] && die "empty line in files.txt"
+    files=($(find /input/ -type f -regex "^/input/${f#^}"))
+
+    n=${#files[@]}
+    [ $n -eq 0 ] && die "files.txt: no files for $f not found"
+    echo "found $n files for $f: ${files[@]}"
+
+    if [ "/input/$f" != "${files[0]}" -a -z "$etc" ]; then
+       die "files.txt: need basename column(3) for regex matched files."
+    fi
   done < <(egrep -v "^(# .*)?$" /tmp/files.txt)
 else
   find /input/ -type f -name "*.fastq.gz" | sed 's~/input/~~' > /tmp/files.txt
 fi
+
 now_running=0
 (
-while read fastq ID SM LB; do
+while read f SM LB ID; do
  now_running=$(((now_running+1)%(PARALLEL+1)))
  [ $now_running -eq 0 ] && wait
 
- [ -z "$ID" ] && ID="$(mktemp -u | cut -d "." -f2)"
-
- [ -z "$SM" ] && SM="$(basename "$fastq" | sed -r 's/_[ACTG]{6,}.*$//')"
+ [ -z "$SM" ] && SM="$(basename $f | sed -r 's/_[ACTG]{6,}.*$//')"
 
  [ -z "$LB" ] && LB="$SM"
 
+ [ -z "$ID" ] && ID="$(mktemp -u | cut -d "." -f2)"
+
  mapqcount="/output/${LB}-counts-${KBIN_SIZE}000-q${QUALITY_CUTOFF}.txt"
- bam="/output/${LB%.bam}.bam"
+ aln="/output/${LB}.cram"
+ [ ! -e "${aln}.crai" ] && aln="/output/${LB}.bam"
+ ai="$(echo ${aln} | sed -n -r 's/(^.+\.(b|cr)*am)$/\1.\2ai/p')"
 
  {
-  if [ -f "$bam.bai" ]; then
-   samtools quickcheck "$bam" || rm_old "$bam.bai"
-   if [ -f "$mapqcount" ]; then
-    if [ $(cat "$mapqcount" | wc -l) -ne $(cat "/tmp/$bins" | wc -l) ]; then
-     rm_old "$mapqcount" "/output/log/${LB}_mapq_counts.log"
+  # index is created after alignment.
+  while [ -e "$ai" ]; do
+    samtools quickcheck "$aln" && break;
+    rm_old "$aln" "$ai"
+    if [[ $aln =~ \.cram$ ]]; then
+      aln="${aln%.cram}.bam"
+      ai="${ai%.cram.crai}.bam.bai"
+      [ -e "$ai" ] || rm_old "$mapqcount" "/output/log/${LB}_mapq_counts.log" "$out"
+    else
+     # if quickcheck fails on existing bam file all steps are redone
+      rm_old "$mapqcount" "/output/log/${LB}_mapq_counts.log" "$out"
     fi
-   fi
-  fi
-  [ -e "$mapqcount" ] && continue
-  echo -e "$fastq\t$mapqcount" >> /output/sample_list.txt
-  if [ ! -f "$bam.bai" ]; then
-   echo "Aligning $fastq to $bam" 1>&2
-   # noclobber is active: ensure mapqcount can be donw
+  done
+
+  if [ ! -f "$ai" ]; then
+   echo "Aligning $f to $aln" 1>&2
+   # noclobber is active: ensure mapqcount can be done
    [ -f "$mapqcount" ] && rm_old "$mapqcount" "/output/log/${LB}_mapq_counts.log"
 
-   (bwa mem -M -t $THREADS -R "@RG\tID:$ID\tSM:$SM\tLB:$LB\tCN:$CN\tPL:$PL" "$bwaindex" "/input/$fastq" |
-   samtools sort -m $MEM - -o "$bam" &&
-   samtools index "$bam") &> "/output/log/${LB}_alignment.log"
-
+   # samples can be split over multiple runs / requests.
+   (find /input/ -type f -regex "^/input/${f#^}" | xargs zcat |
+   bwa mem -M -t $THREADS -R "@RG\tID:$ID\tSM:$SM\tLB:$LB\tCN:$CN\tPL:$PL" "$bwaindex" -|
+   samtools sort -m $MEM -@ 4 - -o "$aln" &&
+   samtools index "$aln") &> "/output/log/${LB}_alignment.log"
+   samtools quickcheck "$aln" || die "samtools quickcheck failed for $aln"
   fi
 
-  samtools quickcheck "$bam"
-
   if [ ! -f "$mapqcount" ]; then
-   echo "counting $bam into $mapqcount" 1>&2 &&
+   echo "counting $aln into $mapqcount" 1>&2 &&
 
-   samtools view -q $QUALITY_CUTOFF -bu "$bam" |
-   bedtools coverage -counts -sorted -g $chromInfo -a "/tmp/${bins}" -b stdin |
-   bedtools sort > "$mapqcount"
-   if [ $(cat "$mapqcount" | wc -l) -ne $(cat "/tmp/$bins" | wc -l) ]; then
-     die "bincount nr of lines does not match mapqcounts"
+   samtools view --reference "$bwaindex" -bu -q $QUALITY_CUTOFF "$aln" |
+   CRAM_REFERENCE="$bwaindex" bedtools coverage -counts -sorted \
+    -g $chromInfo -a "/tmp/${bins}" -b stdin | bedtools sort > "$mapqcount"
+
+   if [ $(wc -l < "$mapqcount") -ne $(wc -l < "/tmp/$bins") ]; then
+     die "$bincount nr of lines does not match mapqcounts"
+   else
+     grep -w -q "[1-9][0-9]*$" "$mapqcount" || die "$bincount contains only zeros"
    fi
+  fi
+  if [ "$SKIP_CRAM" != "true" ]; then
+    if [[ $aln =~ \.bam$ ]]; then
+      # conversion to cram after counts: order for the classifier
+      cram="${aln%.bam}.cram"
+      samtools view --reference "$bwaindex" \
+       --output-fmt cram,version=3.0 \
+       --output-fmt-option seqs_per_slice=100000 $aln -o "$cram"
+      samtools index "$cram"
+      samtools quickcheck "$cram" || die "samtools quickcheck [bam -> cram] failed for $aln"
+      rm "$aln" "$ai"
+    fi
   fi
  }&
 done < <(egrep -v "^(#.*)?$" /tmp/files.txt)
@@ -191,14 +226,14 @@ done
 # create classifier file
 cd /output
 mkdir -p qc${KBIN_SIZE}K
-[ -f "$out" ] || Rscript /app/create_NKI_1m.R ${KBIN_SIZE} ${BLACKLIST} NKI_1m${TAG} 2>&1 | tee /output/log/create_NKI_1m${TAG}.log
+[ -f "$out" ] || Rscript /app/create_NKI_1m.R ${KBIN_SIZE} ${QUALITY_CUTOFF} ${SEQUENCE_LENGTH} ${BLACKLIST} NKI_1m${TAG} 2>&1 | tee /output/log/create_NKI_1m${TAG}.log
 
 #[ -f "$outxlsx" ] || Rscript /app/cmd_EL.R "$out"
 
 # next: classifier
 #Rscript /app/classifierR.R \
 # -i "$outxlsx" \
-# -s $(cat /tmp/files.txt | wc -l) \
+# -s $(wc -l < /tmp/files.txt) \
 # -t "$TYPE" \
 # -o "/output/NKI_1M_${TYPE}_classifier" \
 # -b "$BRCA_NUM"
