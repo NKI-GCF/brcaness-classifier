@@ -124,24 +124,26 @@ makeRatios <- function(cnv, reference=c("columns", "rowmedian", "rowmeans", "col
 }
 
 
-tng <- function(df, use, correctmappa=TRUE,  plot=NULL, verbose=T) {
+tng <- function(df, use, correctmappa=TRUE, plots=NULL, verbose=T) {
 	
 	#tests
 	if(!is.logical(use) && length(use) ==nrow(df))
 		stop("use should be logicval vector with same size as df")
 	#df colums?
 
-	if(!is.null(plot)) {
-		if(!is.logical(plot)) {
-			if(verbose) cat("Plotting to file", plot,"\n")
-			png(plot, width=700, height=1400)
+	if(!is.null(plots)) {
+		if(!is.logical(plots)) {
+			if(verbose) cat("Plotting to file", plots,"\n")
+			png(plots, width=700, height=1400)
 			par(mfrow=c(2,1))
 			on.exit(dev.off())
-			plot <- TRUE
-		} else if(plot) {
+			plots <- TRUE
+		} else if(plots) {
 			par(mfrow=c(2,1))
 		}
-	}
+        } else {
+            plots <- FALSE
+        }
 
 	#exclude contains the points to exclude in the 
 	#fitting (usually sex chromosomes and blacklisted regions)
@@ -155,7 +157,7 @@ tng <- function(df, use, correctmappa=TRUE,  plot=NULL, verbose=T) {
 	normv <- predict(final, df$gc)
 	df$countgcloess <- df$count/(normv/median(normv, na.rm=T))
 
-	if(plot) {
+	if(plots) {
 		plot(count ~ gc, data=df, subset=gcuse, ylim=quantile(df$count[gcuse], c(0.0001, .999)), xlim=c(.1,.8), pch=".")
 		points(count ~ gc, data=df, subset=!gcuse, col=rgb(1,0,0,.3), pch=".")
 		lines(i, predict(rough, i), col=3)
@@ -168,7 +170,7 @@ tng <- function(df, use, correctmappa=TRUE,  plot=NULL, verbose=T) {
 	lm(countgcloess~0+mappa, data=df, subset=mappause) ->fll
 	if(verbose) print(summary(fll))
 
-	if (plot) {
+	if (plots) {
 		plot(countgcloess ~ mappa, data=df, subset=mappause, ylim=quantile(df$countgcloess, c(0.0001, .999), na.rm=T), pch=".")
 		points(countgcloess ~ mappa, data=df, subset=!mappause, col=rgb(1,0,0,.3), pch=".")
 		abline(0, fll$coef, col=2)
