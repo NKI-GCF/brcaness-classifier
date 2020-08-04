@@ -1,7 +1,7 @@
 # Brcaness-classifier
 
 ### To setup Docker
-Use documentation on-line or provided by your Linux distribution.
+Use documentation [here](https://docs.docker.com/get-docker/) or provided by your Linux distribution.
 
 ## Building the docker image
 ##### dependent on your docker configuration, you may have to add the flag '--network=host'
