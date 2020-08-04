@@ -1,9 +1,9 @@
 # Brcaness-classifier
 
-## To setup Docker
-### Use documentation on-line, or of your Linux distribution.
+### To setup Docker
+Use documentation on-line or provided by your Linux distribution.
 
-## Building the docker image.
+## Building the docker image
 ##### dependent on your docker configuration, you may have to add the flag '--network=host'
 ##### Takes a few hours, is required once.
 
@@ -12,16 +12,18 @@ tag=0.7
 docker build --tag=ovabrca:$tag .
 ```
 
-=====
+======
 
-## Data access for the container.
+## Data access for the container
+
+One should never link sensitive parts of a filesystem in a docker container. Read about security [here](https://docs.docker.com/engine/security/security/#docker-daemon-attack-surface).
 
 ### A configuration and empty output directory are required
 ```bash
 mkdir -p config/ output/
 ```
 
-### If the fastq files are inthe current directory, then use:
+### If the fastq files are in the current directory, then use:
 
 ```bash
 input="-v `pwd`:/input"
@@ -49,8 +51,8 @@ done < <(ls -1 *.fastq.gz | xargs -n 1 readlink | xargs -n 1 dirname | xargs -n 
 
 ## Configuration files
 
-### To resolve file(s) per sample a tab-separated file containing reular expression and sample basename:
-config/files.txt
+### To resolve file(s) per sample a tab-separated file containing regular expression and sample basename:
+**config/files.txt**
 
 ### example
 ```
@@ -59,7 +61,7 @@ config/files.txt
 ```
 
 ### For the pipeline settings:
-config/config.txt
+**config/config.txt**
 
 ### example
 ```
@@ -79,11 +81,14 @@ CONTINUE=true
 CHECKSUM=false
 ```
 
-## Running the container.
-### Adapt paths, e.g.
-### required are 
-data_dir=$path_to/fastq_files
+======
+
+## Running the container
+### path to bwa indexed fasta files
+
 bwaindex_dir=$path_to/Homo_sapiens.GRCh38/index/bwa/
+
+# full paths are required in docker
 path="`pwd`"
 
 ### This runs the container 
@@ -94,8 +99,8 @@ docker run --rm -u $UID:$GROUPS \
   -v $path/config:/config:ro \
   ovabrca:$tag
 
-### For development that does not yet require docker rebuilding, one can mount the /app directory
-### and run scripts manually.
+## container development
+### If possible without docker rebuilding, one can mount the app/ directory, adapt and run scripts manually.
 docker run --rm -t -i -u $UID:$GROUPS \
   -v $path/output/:/output:rw \
   $input \
