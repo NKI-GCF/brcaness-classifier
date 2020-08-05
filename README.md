@@ -4,11 +4,13 @@
 Use documentation [here](https://docs.docker.com/get-docker/) or provided by your Linux distribution.
 
 ## Building the docker image
-##### dependent on your docker configuration, you may have to add the flag '--network=host'
-##### Takes a few hours, is required once.
+Building takes a few hours, the first time. Rebuilding is required for every significant Dockerfile change,
+or for script file changes. For the latter only, build time is much less.
+
+Dependent on your docker configuration, you may have to add the flag '--network=host'.
 
 ```bash
-tag=0.7
+tag=0.8
 docker build --tag=ovabrca:$tag .
 ```
 
@@ -73,7 +75,7 @@ BRCA_NUM=1
 BLACKLIST=GRCh38-blacklist-merged.bed
 TAG=-GRCh38-blacklist-merged
 ```
-#### TYPE and BRCA_NUM are currently (version 0.7) unused
+#### TYPE and BRCA_NUM are currently unused
 
 # To continue e.g. when more files were added later, you can use:
 ```
