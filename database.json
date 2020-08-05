@@ -1,7 +1,0 @@
-{
-  "instance": "SQL-PROD-D\\\\SQL_PROD_D",
-  "database": "MolPaApp",
-  "UserUID": "NGSETL",
-  "UserPWD": "sGV4TN20wI",
-  "proc": "[dbo].[USP_EditBRCAVals]"
-}
