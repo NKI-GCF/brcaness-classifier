@@ -151,7 +151,7 @@ fixMissing2Centroid <- function(cls=c('b1.371', 'b1.191','b2',NA), dt, fillM=c('
     # first create data.frame; this is equal for both tumor types
             
     # the classifier was trained on hg18 data
-    plf <- read.delim(paste0(pipeline,"/bac/platformnki_hg18.txt"))
+    plf <- read.delim(paste0(scriptdir,"/ref/platformnki_hg18.txt"))
 
     # merge the input data with the platform file. The platform file contains duplicated chrom and maploc positions
     # which correspond to triple spotted array positions which are marked by a different order value. In the merge we use
@@ -172,21 +172,15 @@ fixMissing2Centroid <- function(cls=c('b1.371', 'b1.191','b2',NA), dt, fillM=c('
           
       # get centroids of the various classifiers, get the number of columns and get the classifier probes
       if (cls=='b1.371') {
-        ct <- read.delim(paste0(pipeline,"/bac/B1371centroids.txt"), stringsAsFactors=F, header=F)
-        n <- 2
-        classprobe <- ! (ct[1] == ct[2])
+        ct <- b1.371.ct[,9:10]
         }
     
       if (cls=='b1.191') {
-        ct <- read.delim(paste0(pipeline,"/bac/B1centroids.txt"), stringsAsFactors=F, header=F)
-        n <- 3
-        classprobe <- ! (ct[2] == ct[3])
+        ct <- b1.191.ct[,9:10]
         }
     
       if (cls=='b2') {
-        ct <- read.delim(paste0(pipeline,"/bac/B2centroids.txt"), stringsAsFactors=F, header=F)
-        n <- 3
-        classprobe <- ! (ct[2] == ct[3])
+        ct <- b2.704.ct[,9:10]
 
         # here segmentation with NA approximated, since the segmentation functions do not work with missings
         # since the probes to be changed afterwards are defined earlier filling the missings here is no problem
@@ -202,31 +196,33 @@ fixMissing2Centroid <- function(cls=c('b1.371', 'b1.191','b2',NA), dt, fillM=c('
         comb[,-1:-8] <- extractCghSeg(sg, chrom=plf$chrom, maploc=plf$maploc, coln=colnames(dt))[,-1:-2]
         }
 
-							 	#create a filling object
- 								fl <- matrix(rep((ct[,n-1]+ ct[,n])/2,   ncol(comb)-8), ncol=(ncol(comb)-8))
-			
-								# fill individual missing probes with classifier centroids in case ct is chosen
-								if(fillM=='ct') {
-        					tm <- as.matrix(comb[,-1:-8])
-        					tm[allmissing,] <- fl[allmissing,]
-        					#	 change somemissing to interpolated, they're randomly missing and therefore should not be filled with centroid avg.
-        					# set the segmented data back to NA for BRCA2 (for BRCA1 does not do anything, some_missing are not yet filled, as
-        					# is caused by segmentation for the BRCA2 classifier)
-        					tm[somemissing,][pos_some_missing] <- NA
-        					comb[,-1:-8] <- tm
-        					# fill random missings with interpolation
-        					comb[,-1:-8] <- na.approx(comb[,-1:-8], na.rm=F)
-        					# push backward and forward to remove missings at the start and end
-        					comb[,-1:-8] <- na.locf(comb[,-1:-8], fromLast=T,na.rm=F)
-        					comb[,-1:-8] <- na.locf(comb[,-1:-8])
-    					}		else if (fillM=='zoo') {					
-    									# fill with linear interpolation in case 'zoo' is chosen.	
-        					comb[,-1:-8] <- na.approx(comb[,-1:-8], na.rm=F)
-        					# push backward and forward to remove missings at start and end
-        					comb[,-1:-8] <- na.locf(comb[,-1:-8], fromLast=T,na.rm=F)
-        					comb[,-1:-8] <- na.locf(comb[,-1:-8])
-  							}
-	    ## left here 
+      classprobe <- ! (ct[1] == ct[2])
+
+      #create a filling object
+      fl <- matrix(rep((ct[,1]+ ct[,2])/2,   ncol(comb)-8), ncol=(ncol(comb)-8))
+
+      # fill individual missing probes with classifier centroids in case ct is chosen
+      if(fillM=='ct') {
+        tm <- as.matrix(comb[,-1:-8])
+        tm[allmissing,] <- fl[allmissing,]
+        #	 change somemissing to interpolated, they're randomly missing and therefore should not be filled with centroid avg.
+        # set the segmented data back to NA for BRCA2 (for BRCA1 does not do anything, some_missing are not yet filled, as
+        # is caused by segmentation for the BRCA2 classifier)
+        tm[somemissing,][pos_some_missing] <- NA
+        comb[,-1:-8] <- tm
+        # fill random missings with interpolation
+        comb[,-1:-8] <- na.approx(comb[,-1:-8], na.rm=F)
+        # push backward and forward to remove missings at the start and end
+        comb[,-1:-8] <- na.locf(comb[,-1:-8], fromLast=T,na.rm=F)
+        comb[,-1:-8] <- na.locf(comb[,-1:-8])
+      }	else if (fillM=='zoo') {					
+        # fill with linear interpolation in case 'zoo' is chosen.	
+        comb[,-1:-8] <- na.approx(comb[,-1:-8], na.rm=F)
+        # push backward and forward to remove missings at start and end
+        comb[,-1:-8] <- na.locf(comb[,-1:-8], fromLast=T,na.rm=F)
+        comb[,-1:-8] <- na.locf(comb[,-1:-8])
+      }
+	     
     cat(paste(sum(allmissing & classprobe), ' classifier probes set to centroid for all samples\n', sep=""))
     cat(paste(sum(classprobe & somemissing ), ' classifier probes approximated or put to centroid in some samples \n', sep='')) 
     }	
@@ -250,15 +246,15 @@ fixMissing2Centroid <- function(cls=c('b1.371', 'b1.191','b2',NA), dt, fillM=c('
 # fill missing by linear interpolation and subsequently fill trailing and starting NAs by bringing backward and forward
 # the last known 
 fillMat <- function(dt) {
-        # De classifier (in 2008 door Simon Joosse ontwikkeld) is nog op 18 gebouwd.
-    plf <- read.delim(paste0(pipeline,"/bac/platformnki_hg18.txt"))
+    # De classifier (in 2008 door Simon Joosse ontwikkeld) is nog op 18 gebouwd.
+    plf <- read.delim(paste0(scriptdir,"/ref/platformnki_hg18.txt"))
 
-        # merge the input data with the platform file. The platform file contains duplicated chrom and maploc positions
-        # which correspond to triple spotted array positions which are marked by a different order value. In the merge we use
-        # all.x to retain the dimensions of the matrix.
+    # merge the input data with the platform file. The platform file contains duplicated chrom and maploc positions
+    # which correspond to triple spotted array positions which are marked by a different order value. In the merge we use
+    # all.x to retain the dimensions of the matrix.
     comb<- merge(plf, dt, by.x=c('chrom','maploc'), by.y=c('chrom', 'maploc'), all.x=T)
     comb <- comb[order(comb$chrom, comb$maploc), ]
-        # linear interpolation for ovarian cancer due to high correlation between probes.
+    # linear interpolation for ovarian cancer due to high correlation between probes.
     comb[,-1:-8] <- na.approx(comb[,-1:-8], na.rm=F)
     comb[,-1:-8] <- na.locf(comb[,-1:-8], fromLast=T, na.rm=F)
     comb[,-1:-8] <- na.locf(comb[,-1:-8])
@@ -276,12 +272,12 @@ correctDataset <- function(dt, sample_type=c('breast','ovarian'),filedir) {
   # load unsegmented breast or ovarian cancer ratios, depending on sample_type
   # breast  cancer unsegmented data:
   if (sample_type=='breast') {
-      load(paste0(filedir, '/AnnOncB1PaperRatios.RDa'))
+      load(paste0(scriptdir, '/ref/AnnOncB1PaperRatios.RDa'))
       ovr <- AnnOncB1PaperRatios
   }
   # ovarian cancer unsegmented data:
   if (sample_type=='ovarian') {
-    load(paste0(filedir, '/ov.ratios.RDa'))
+    load(paste0(scriptdir, '/ref/ov.ratios.RDa'))
     ovr <- ov.ratios
   }
 
@@ -291,7 +287,7 @@ correctDataset <- function(dt, sample_type=c('breast','ovarian'),filedir) {
   # to chr1:22 and chrX described in here (3248 probes). Average of the ratios within
   # the BAC clone. E.g. if BAC clone is chr1 100000 - 200000, find all ratios within
   # this interval, take the mean, and use this as the ratio for this BAC location. 
-  plf <- read.delim(paste0(filedir, '/platformnki.txt'), sep='\t', stringsAsFactors=F)
+  plf <- read.delim(paste0(scriptdir, '/ref/platformnki.txt'), sep='\t', stringsAsFactors=F)
  
 
  
@@ -348,12 +344,19 @@ if (length(opts) < 4) {
   print(variation_pipeline)
   print(correct_platform)
   print(missing2centroid)
+  print(colnames(b1.371.ct))
+  print(dim(b1.371.ct))
+  print(colnames(b1.191.ct))
+  print(dim(b1.191.ct))
+  print(colnames(b2.704.ct))
+  print(dim(b2.704.ct))
+
    stopifnot(file.exists(file))
   tmp <- read.delim(file, stringsAsFactors=F)
   print(head(colnames(tmp)))
   colnames(tmp)[3] <- 'chrom'
   # De classifier (in 2008 door Simon Joosse ontwikkelt) is nog op 18 gebouwd.
-  plf <- read.delim(paste0(pipeline,"/bac/platformnki_hg18.txt"))
+  plf <- read.delim(paste0(scriptdir,"/ref/platformnki_hg18.txt"))
 
   comb <- merge(plf,tmp, by='Order', all.x=T)
   comb <- comb[order(comb$chrom.x, comb$maploc), ]
@@ -399,12 +402,12 @@ if (length(opts) < 4) {
       # fill missings by linear interpolation
       kc <- fillMat(kc[1:3248,])
       # platformcorrection ovarian
-      kc <- correctDataset(kc[1:3248,], sample_type='ovarian', filedir=paste0(pipeline,'/brcaClassifier'))
+      kc <- correctDataset(kc[1:3248,], sample_type='ovarian', filedir=paste0(scriptdir,'/ref'))
       # now only uses segmentation from fixMissing2Centroid
       print(any(is.na(kc)))
       print(head(kc[kc$chrom == 22,]))
       sg <- fixMissing2Centroid(cls=cls, sample_type='ovarian', dt=kc)
-      load(paste0(pipeline,'/brcaClassifier/ov.B1.RDa'))
+      load(paste0(scriptdir,'/ref/ov.B1.RDa'))
       pred <- with(ov.B1, pamr.predict(m, newx=as.matrix(sg[1:3248,-1:-2]), 
         threshold=delta[sel],type='posterior'))[,2]
       }
@@ -414,10 +417,10 @@ if (length(opts) < 4) {
       # fill missings by linear interpolation
       kc <- fillMat(kc[1:3248,])
       # platformcorrection ovarian
-      kc <- correctDataset(kc[1:3248,], sample_type='ovarian', filedir=paste0(pipeline,'/brcaClassifier'))
+      kc <- correctDataset(kc[1:3248,], sample_type='ovarian', filedir=paste0(scriptdir,'/ref'))
       # now only uses segmentation from fixMissing2Centroid
       sg <- fixMissing2Centroid(cls=cls,sample_type='ovarian', dt=kc)
-      load(paste0(pipeline,'/brcaClassifier/ov.B2.RDa'))      
+      load(paste0(scriptdir,'/ref/ov.B2.RDa'))      
       pred <- with(ov.B2, pamr.predict(m, newx=as.matrix(sg[1:3248,-1:-2]), 
         threshold=delta[sel], type='posterior'))[,2]
       }
@@ -436,7 +439,7 @@ if (length(opts) < 4) {
     kc <- fillMat(kc)
 
     if (correct_platform) {
-      kc <- correctDataset(kc, sample_type, filedir=paste0(pipeline,'/brcaClassifier'))
+      kc <- correctDataset(kc, sample_type, filedir=paste0(scriptdir,'/ref'))
     }
 
     # correct_platform needs to occur before changing the centroids of missing class otherwise the values will be 
