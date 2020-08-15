@@ -3,6 +3,8 @@
 # ask Roel whether parallel is already incorporated, turned of for processing with windows
 #require(multicore)
 
+# segmentation methods
+require(cghseg)
 # Range methods
 require(GenomicRanges)
 # interpolation and padding
@@ -44,14 +46,15 @@ usage <- "Rscript cmd_EL.R <NKI_1M file> <sample_type> <cls> <variation_pipeline
 
 doCghSeg <- function(chromNum, allKC, chrom, maploc) {
 
-  require(cghseg)
-  require(GenomicRanges)
+  #require(cghseg)
+  #require(GenomicRanges)
 
   tumnames <- colnames(allKC)[-1:-2]
   profiles <- as.matrix(allKC[chrom == chromNum, -c(1,2)])
   subchrom <- chrom[chrom==chromNum]
   submaploc <- maploc[chrom==chromNum]
-
+		
+		# check profiles are ordered (errors might be introduced by liftover)
   print(paste('chrom', chromNum,'is ordered:', !any(!order(submaploc)==1:length(submaploc))))
 
   # Segmentation
@@ -100,8 +103,10 @@ extractCghSeg <- function(cghSegObj, chrom, maploc, coln) {
   segMeans <- lapply(cghSegObj, function(x) values(x)$seg.mean)
   patients <- lapply(cghSegObj, function(x) values(x)$ID)
 
+		# unpack segments
   tmp1 <- lapply(unique(as.character(chrom)), function(x) rep(segMeans[[x]], times=((endInd[[x]]+1)-startInd[[x]])))
 
+		# catch error
   if(!length(unlist(tmp1)) == length(chrom)*length(unique(unlist(patients)))) {
     # duplicated maplocs in nki cause this problem
     # only chrom 3 has this problem:
@@ -110,12 +115,14 @@ extractCghSeg <- function(cghSegObj, chrom, maploc, coln) {
     stop('missing segMeans for some probes')
   }
 
-  names(tmp1) <- unique(as.character(chrom))
+		names(tmp1) <- unique(as.character(chrom))
+  # convert to matrix
   tmp2 <- lapply(unique(as.character(chrom)), function(x) matrix(tmp1[[x]], ncol= length(unique(patients[[x]]))))
 
-
+		# remove list per chromosome
   final <- do.call(rbind, tmp2)
 
+		# convert to KCSmart dataframe
   final2 <- data.frame(chrom=chrom, maploc=maploc, final, stringsAsFactors=F)
   colnames(final2) <- coln
 
@@ -143,27 +150,21 @@ extractCghSeg <- function(cghSegObj, chrom, maploc, coln) {
 fixMissing2Centroid <- function(cls=c('b1.371', 'b1.191','b2',NA), dt, fillM=c('zoo', 'ct', NA), sample_type=c('breast','ovarian')) {
     # first create data.frame; this is equal for both tumor types
             
-        # De classifier (in 2008 door Simon Joosse ontwikkeld) is nog op 18 gebouwd.
+    # the classifier was trained on hg18 data
     plf <- read.delim(paste0(pipeline,"/bac/platformnki_hg18.txt"))
 
-        # merge the input data with the platform file. The platform file contains duplicated chrom and maploc positions
-        # which correspond to triple spotted array positions which are marked by a different order value. In the merge we use
-        # all.x to retain the dimensions of the matrix.
-    comb<- merge(plf, dt, by.x=c('chrom','maploc'), by.y=c('chrom', 'maploc'), all.x=T)
+    # merge the input data with the platform file. The platform file contains duplicated chrom and maploc positions
+    # which correspond to triple spotted array positions which are marked by a different order value. In the merge we use
+    # all.x to retain the dimensions of the matrix.
+    comb <- merge(plf, dt, by.x=c('chrom','maploc'), by.y=c('chrom', 'maploc'), all.x=T)
     comb <- comb[order(comb$chrom, comb$maploc), ]
+    # remove chromosome Y values, not required for classification
     comb[comb$chrom == 24,-1:-8] <- 0        
     # we might have non-mappable positions; all values in a row are NA or random missings in a sample; some values in a row are NA
     allmissing <- apply(comb[, -1:-8], 1, function(x) all(is.na(x)))
     somemissing <- apply(comb[,-1:-8], 1, function(x) any(is.na(x))) & ! allmissing
     pos_some_missing <- which(is.na(as.matrix(comb[somemissing,-1:-8])))
-  
-    # set NA's on the Y (=24) chrom, to 0, it lacks classifier probes anyway
 
-    
-    # note for later: it would make sense to implement platform correction here. Think of how chromosome Y needs to be handled.
-    # if implemented here the missing classifier probes will be correctly changed to the average of the class centroids
-
-  
     if (sample_type == 'breast')  {
       # for breast cancer samples probes that contain only missings (nonmappable) should be set to the
       # to mean of the sum of the class centroids to prevent influence on the classification (Schouten et al BCRT 2012)
@@ -201,28 +202,31 @@ fixMissing2Centroid <- function(cls=c('b1.371', 'b1.191','b2',NA), dt, fillM=c('
         comb[,-1:-8] <- extractCghSeg(sg, chrom=plf$chrom, maploc=plf$maploc, coln=colnames(dt))[,-1:-2]
         }
 
- 	#create a filling object
- 	fl <- matrix(rep((ct[,n-1]+ ct[,n])/2,   ncol(comb)-8), ncol=(ncol(comb)-8))
+							 	#create a filling object
+ 								fl <- matrix(rep((ct[,n-1]+ ct[,n])/2,   ncol(comb)-8), ncol=(ncol(comb)-8))
 			
-	# fill individual missing probes with classifier centroids in case ct is chosen
-	if(fillM=='ct') {
-        tm <- as.matrix(comb[,-1:-8])
-        tm[allmissing,] <- fl[allmissing,]
-        # change somemissing to interpolated, they're randomly missing and therefore should not be filled with centroid avg.
-        # set the segmented data back to NA for BRCA2 (for BRCA1 does not do anything)
-        tm[somemissing,][pos_some_missing] <- NA
-        comb[,-1:-8] <- tm
-        # fill random missings with interpolation
-        comb[,-1:-8] <- na.approx(comb[,-1:-8], na.rm=F)
-        comb[,-1:-8] <- na.locf(comb[,-1:-8], fromLast=T,na.rm=F)
-        comb[,-1:-8] <- na.locf(comb[,-1:-8])
-    } else if (fillM=='zoo') {					
-    # fill with linear interpolation in case 'zoo' is chosen.	
-        comb[,-1:-8] <- na.approx(comb[,-1:-8], na.rm=F)
-        comb[,-1:-8] <- na.locf(comb[,-1:-8], fromLast=T,na.rm=F)
-        comb[,-1:-8] <- na.locf(comb[,-1:-8])
-  		}
-	    
+								# fill individual missing probes with classifier centroids in case ct is chosen
+								if(fillM=='ct') {
+        					tm <- as.matrix(comb[,-1:-8])
+        					tm[allmissing,] <- fl[allmissing,]
+        					#	 change somemissing to interpolated, they're randomly missing and therefore should not be filled with centroid avg.
+        					# set the segmented data back to NA for BRCA2 (for BRCA1 does not do anything, some_missing are not yet filled, as
+        					# is caused by segmentation for the BRCA2 classifier)
+        					tm[somemissing,][pos_some_missing] <- NA
+        					comb[,-1:-8] <- tm
+        					# fill random missings with interpolation
+        					comb[,-1:-8] <- na.approx(comb[,-1:-8], na.rm=F)
+        					# push backward and forward to remove missings at the start and end
+        					comb[,-1:-8] <- na.locf(comb[,-1:-8], fromLast=T,na.rm=F)
+        					comb[,-1:-8] <- na.locf(comb[,-1:-8])
+    					}		else if (fillM=='zoo') {					
+    									# fill with linear interpolation in case 'zoo' is chosen.	
+        					comb[,-1:-8] <- na.approx(comb[,-1:-8], na.rm=F)
+        					# push backward and forward to remove missings at start and end
+        					comb[,-1:-8] <- na.locf(comb[,-1:-8], fromLast=T,na.rm=F)
+        					comb[,-1:-8] <- na.locf(comb[,-1:-8])
+  							}
+	    ## left here 
     cat(paste(sum(allmissing & classprobe), ' classifier probes set to centroid for all samples\n', sep=""))
     cat(paste(sum(classprobe & somemissing ), ' classifier probes approximated or put to centroid in some samples \n', sep='')) 
     }	
