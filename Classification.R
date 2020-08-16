@@ -306,7 +306,7 @@ correctDataset <- function(dt, sample_type=c('breast','ovarian'),filedir) {
   # has extreme values. Average of the ratios within
   # the BAC clone. E.g. if BAC clone is chr1 100000 - 200000, find all ratios within
   # this interval, take the mean, and use this as the ratio for this BAC location. 
-  plf <- read.delim(paste0(scriptdir, '/ref/platformnki.txt'), sep='\t', stringsAsFactors=F)
+  plf <- read.delim(paste0(scriptdir, '/ref/platformnki_hg18.txt'), sep='\t', stringsAsFactors=F)
   
   # this is the data to correct
   newdata <- (dt[1:3248,-1:-2])
@@ -447,11 +447,18 @@ if (variation_pipeline) {
   if (missing2centroid) {
     # reset the initial missing values
     kc <- as.matrix(kc)
+    # for the BRCA2 breast cancer classifier kc will be overwritten and thus no ratios file will exist. 
+    # therefore we save before resetting the missing values. In the ratios file the missings are interpolated and not set to centroid.
+    # This is not fixable, as the centroid is set after segmentation. N.B. default is to let interpolation and segmentation 
+    # and not to set to centroid.
+    if (cls =='b2' && sample_type=='breast') {
+      ratb2 <- kc
+    }
     kc[missing_mat] <- NA
     kc <- data.frame(kc, stringsAsFactors=F)
     kc <- fixMissing2Centroid(cls=cls, dt=kc, fillM='ct', sample_type=sample_type)
+    print('fixed missing to centroid') 
   }
-  print('fixed to centroid if requested') 
 
   # not optional ; output requires sg
   #  if (segment) {
@@ -465,8 +472,11 @@ if (variation_pipeline) {
 }
 
 # classifiers could be run here to also produce pred.
-
+if (exists('ratb2')) {
+  ratios <- as.data.frame(ratb2);
+} else {
 ratios <- as.data.frame(kc[,-1:-2]);
+}
 segments <- as.data.frame(sg[,-1:-2]);
 
 write.table(ratios, file = paste0(gsub("\\.txt","", basename(file)), ".ratios-", cls,'-',sample_type,'-',variation_pipeline,'-',correct_platform,'-',missing2centroid, ".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
