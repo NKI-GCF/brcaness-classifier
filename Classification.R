@@ -15,7 +15,7 @@ if (m) {
 }
 
 print(paste0("options: '", paste(opts, collapse="', '"), "'"))
-usage <- "Rscript Classification.R <NKI_1M file> <sample_type> = 'breast'/'ovarian'; <cls> = 'b1.191'/'b1.371'/'b1'/'b2' ; <variation_pipeline> = 'TRUE'/'FALSE' ; <correct_platform> = 'TRUE'/'FALSE' ; <missing2centroid> = 'TRUE'/'FALSE'";
+usage <- "Rscript Classification.R <NKI_1M file> <sample_type> = 'breast'/'ovarian'; <cls> = 'b1.191'/'b1.371'/'b1'/'b2' ; <legacy_pipeline> = 'TRUE'/'FALSE' ; <correct_platform> = 'TRUE'/'FALSE' ; <missing2centroid> = 'TRUE'/'FALSE'";
 
 
 if (length(opts) < 4) {
@@ -24,7 +24,7 @@ if (length(opts) < 4) {
 file <- opts[1];
 sample_type <- opts[2];
 cls <- opts[3];
-variation_pipeline <- as.logical(opts[4]);
+legacy_pipeline <- as.logical(opts[4]);
 correct_platform <- as.logical(opts[5]);
 missing2centroid <- as.logical(opts[6]);
 sink(file=paste0(gsub("\\.txt","", basename(file)), ".session.", sample_type,"-", cls,".txt"))
@@ -351,7 +351,7 @@ correctDataset <- function(dt, sample_type=c('breast','ovarian'),filedir) {
 print(file)
 print(sample_type)
 print(cls)
-print(variation_pipeline)
+print(legacy_pipeline)
 print(correct_platform)
 print(missing2centroid)
 stopifnot(file.exists(file))
@@ -370,7 +370,7 @@ print('created KC dataframe')
 
 # fixed pipelines (these could also be called with arguments in the process.sh and the correct ratio/segment output
 # of variations below (line 285)):
-if (! variation_pipeline) {
+if (legacy_pipeline) {
   print('run legacy pipeline')
   if (sample_type=='breast' & cls =='b1.191') {
     # flow 1 breast BRCA1 191 without platform correction
@@ -431,7 +431,7 @@ if (! variation_pipeline) {
 # (no effect of the probe for classifcation). For breast cancer this is handles in fixMissing2Centroid. For ovarian cancer
 # in principle is handled by linear interpolation. 
 # we save a matrix of missing values so breast cancer can be corrected using existing functions and for qc for ovarian cancer
-if (variation_pipeline) {  
+if (! legacy_pipeline) {  
   print('start pipeline with platform correction')
   missing_mat <- is.na(as.matrix(kc))
 
@@ -469,23 +469,39 @@ if (variation_pipeline) {
     sg <- fixMissing2Centroid(sample_type='ovarian', dt=kc)
   }
   print('segmented')
+
+  # classifiers could be run here to also produce pred.
+  if (cls == 'b1.191' && sample_type=='breast') {
+    pred <- apply(kc[,-1:-2], 2, b1191)  
+  } else if (cls == 'b1.371' && sample_type=='breast') {
+    pred <- apply(kc[,-1:-2], 2, b1371)  
+  } else if (cls == 'b2' && sample_type=='breast') {
+    pred <- apply(kc[,-1:-2], 2, b2704)  
+  } else if (cls == 'b1' &&  sample_type=='ovarian') {
+    load(paste0(scriptdir,'/ref/ov.B1.RDa'))
+    pred <- with(ov.B1, pamr.predict(m, newx=as.matrix(sg[1:3248,-1:-2]), 
+      threshold=delta[sel],type='posterior'))[,2]
+  } else if (cls == 'b2' &&  sample_type=='ovarian') {
+    load(paste0(scriptdir,'/ref/ov.B2.RDa'))
+    pred <- with(ov.B2, pamr.predict(m, newx=as.matrix(sg[1:3248,-1:-2]), 
+      threshold=delta[sel],type='posterior'))[,2]
+  } 
+  print('created predictions')
 }
 
-# classifiers could be run here to also produce pred.
 if (exists('ratb2')) {
-  ratios <- as.data.frame(ratb2);
+  ratios <- as.data.frame(ratb2[,-1:-2]);
 } else {
-ratios <- as.data.frame(kc[,-1:-2]);
+  ratios <- as.data.frame(kc[,-1:-2]);
 }
 segments <- as.data.frame(sg[,-1:-2]);
 
-write.table(ratios, file = paste0(gsub("\\.txt","", basename(file)), ".ratios-", cls,'-',sample_type,'-',variation_pipeline,'-',correct_platform,'-',missing2centroid, ".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
-write.table(segments, file = paste0(gsub("\\.txt","", basename(file)), ".segments-", cls,'-',sample_type,'-',variation_pipeline,'-',correct_platform,'-',missing2centroid ,".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
+write.table(ratios, file = paste0(gsub("\\.txt","", basename(file)), ".ratios-", cls,'-',sample_type,'-',legacy_pipeline,'-',correct_platform,'-',missing2centroid, ".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
+write.table(segments, file = paste0(gsub("\\.txt","", basename(file)), ".segments-", cls,'-',sample_type,'-',legacy_pipeline,'-',correct_platform,'-',missing2centroid ,".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
 
-if (exists("pred"))  {
-  pred.out <- data.frame(sample_id = colnames(ratios), class_probability=round(pred,3))
-  write.table(pred.out, file = paste0(gsub("\\.txt","", basename(file)), ".pred.", "-", cls,'-',sample_type,'-',variation_pipeline,'-',correct_platform,'-',missing2centroid ,".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
-}
+pred.out <- data.frame(sample_id = colnames(ratios), class_probability=round(pred,3))
+write.table(pred.out, file = paste0(gsub("\\.txt","", basename(file)), ".pred.", "-", cls,'-',sample_type,'-',legacy_pipeline,'-',correct_platform,'-',missing2centroid ,".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
+
 print('wrote output files')
 
 print(sessionInfo())
