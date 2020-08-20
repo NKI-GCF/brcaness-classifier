@@ -168,6 +168,14 @@ RUN BWA_VERSION=0.7.17 \
   && R CMD INSTALL --no-html --no-docs --no-help --no-demo --no-multiarch --no-data cghseg_1.0.5.tar.gz \
   && rm cghseg_1.0.5* \
 #
+
+################## nkiBRCA #######################
+#
+		&& wget http://ccb.nki.nl/software/nkibrca/nkiBRCA_1.00.tar.gz \
+		&& R CMD INSTALL --no-html --no-docs --no-help --no-demo --no-multiarch --no-data nkiBRCA_1.00.tar.gz \
+		&& rm nkiBRCA_1.00* \
+#
+		
 ################## clean up #########################
 # packages with + appended are kept
   && apt-get remove --purge -y $BUILDDEPS libblas3+ libgomp1+ \

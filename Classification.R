@@ -15,7 +15,7 @@ if (m) {
 }
 
 print(paste0("options: '", paste(opts, collapse="', '"), "'"))
-usage <- "Rscript Classification.R <NKI_1M file> <sample_type> = 'breast'/'ovarian'; <cls> = 'b1.191'/'b1.371'/'b1'/'b2' ; <legacy_pipeline> = 'TRUE'/'FALSE' ; <correct_platform> = 'TRUE'/'FALSE' ; <missing2centroid> = 'TRUE'/'FALSE'";
+usage <- "Rscript Classification.R <NKI_1M file> <sample_type> = 'breast'/'ovarian'; <cls> = 'b1.191'/'b1.371'/'b1'/'b2' ; <legacy_pipeline> = 'TRUE'/'FALSE' ; <correct_platform> = 'TRUE'/'FALSE' ; <missing2centroid> = 'TRUE'/'FALSE' <outcls> = 'output directory'";
 
 
 if (length(opts) < 4) {
@@ -27,7 +27,8 @@ cls <- opts[3];
 legacy_pipeline <- as.logical(opts[4]);
 correct_platform <- as.logical(opts[5]);
 missing2centroid <- as.logical(opts[6]);
-sink(file=paste0(gsub("\\.txt","", basename(file)), ".session.", sample_type,"-", cls,".txt"))
+outcls <- as.character(opts[7])
+sink(file=paste0(outcls, gsub("\\.txt","", basename(file)), ".session.", sample_type,"-", cls,".txt"))
 
 print(paste0("scriptdir: ",scriptdir))
 
@@ -496,11 +497,11 @@ if (exists('ratb2')) {
 }
 segments <- as.data.frame(sg[,-1:-2]);
 
-write.table(ratios, file = paste0(gsub("\\.txt","", basename(file)), ".ratios-", cls,'-',sample_type,'-',legacy_pipeline,'-',correct_platform,'-',missing2centroid, ".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
-write.table(segments, file = paste0(gsub("\\.txt","", basename(file)), ".segments-", cls,'-',sample_type,'-',legacy_pipeline,'-',correct_platform,'-',missing2centroid ,".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
+write.table(ratios, file = paste0(outcls, gsub("\\.txt","", basename(file)), ".ratios-", cls,'-',sample_type,'-',legacy_pipeline,'-',correct_platform,'-',missing2centroid, ".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
+write.table(segments, file = paste0(outcls, gsub("\\.txt","", basename(file)), ".segments-", cls,'-',sample_type,'-',legacy_pipeline,'-',correct_platform,'-',missing2centroid ,".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
 
 pred.out <- data.frame(sample_id = colnames(ratios), class_probability=round(pred,3))
-write.table(pred.out, file = paste0(gsub("\\.txt","", basename(file)), ".pred.", "-", cls,'-',sample_type,'-',legacy_pipeline,'-',correct_platform,'-',missing2centroid ,".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
+write.table(pred.out, file = paste0(outcls, gsub("\\.txt","", basename(file)), ".pred.", "-", cls,'-',sample_type,'-',legacy_pipeline,'-',correct_platform,'-',missing2centroid ,".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
 
 print('wrote output files')
 
