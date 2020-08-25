@@ -10,7 +10,7 @@ or for script file changes. For the latter only, build time is much less.
 Dependent on your docker configuration, you may have to add the flag '--network=host'.
 
 ```bash
-tag=0.8
+tag=0.9
 docker build --tag=ovabrca:$tag .
 ```
 
@@ -32,7 +32,7 @@ input="-v `pwd`:/input"
 ```
 
 ### A docker container cannot follow symlinks. You can hard link files - if they are on the same physical disk.
-### Otherwise you can (bind) mount the files. e.g. in an input/ directory
+### You can add nested docker mounts in input/ or you can (bind) mount files. in the input/ directory
 
 ```bash
 mkdir -p input/

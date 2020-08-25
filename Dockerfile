@@ -1,6 +1,8 @@
 FROM debian:stretch-slim
 # (c) Roel Kluin r.kluin@nki.nl GPL-2.0
 
+COPY install/nkiBRCA_1.00.tar.gz /tmp
+
 RUN BWA_VERSION=0.7.17 \
   && HTSLIB_VERSION=1.10.2 \
   && SAMTOOLS_VERSION=1.10 \
@@ -159,14 +161,15 @@ RUN BWA_VERSION=0.7.17 \
  install.packages('rjson', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data')); \
  install.packages('optparse', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data')); \
  install.packages('pamr', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data')); \
- install.packages('zoo', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'));" \
+ install.packages('zoo', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'));"
 #
 #
 ################## cghseg #######################
 #
-  && wget https://cran.r-project.org/src/contrib/Archive/cghseg/cghseg_1.0.5.tar.gz \
+RUN wget https://cran.r-project.org/src/contrib/Archive/cghseg/cghseg_1.0.5.tar.gz \
   && R CMD INSTALL --no-html --no-docs --no-help --no-demo --no-multiarch --no-data cghseg_1.0.5.tar.gz \
-  && rm cghseg_1.0.5* \
+  && R CMD INSTALL --no-html --no-docs --no-help --no-demo --no-multiarch --no-data /tmp/nkiBRCA_1.00.tar.gz \
+  && rm cghseg_* /tmp/nkiBRCA* \
 #
 ################## clean up #########################
 # packages with + appended are kept
