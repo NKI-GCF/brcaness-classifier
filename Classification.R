@@ -1,27 +1,11 @@
 #!/export/data/apps/R-3.1.3/bin/Rscript
 
-# ask Roel whether parallel is already incorporated, turned of for processing with windows
-#require(multicore)
-
-# Range methods
-require(GenomicRanges)
-# interpolation and padding
-require(zoo)
-# still required?
-require(WriteXLS)
-# shrunken centroid classification
-require(pamr)
-# BRCA1 and BRCA2 breast cancer classifiers
-require(nkiBRCA)
-
 #get directory of script
 opts <- commandArgs(trailingOnly = FALSE)
+
 file.arg.name <- "--file="
 script.name <- sub(file.arg.name, "", opts[grep(file.arg.name, opts)])
 scriptdir <- dirname(script.name)
-print(paste0("scriptdir: ",scriptdir))
-pipeline <- dirname(scriptdir)
-print(paste0('pipeline:',pipeline))
 
 m <- match("--args", opts, 0L)
 if (m) {
@@ -31,11 +15,44 @@ if (m) {
 }
 
 print(paste0("options: '", paste(opts, collapse="', '"), "'"))
-usage <- "Rscript cmd_EL.R <NKI_1M file> <sample_type> <cls> <variation_pipeline> <correct_platform> <missing2centroid";
+usage <- "Rscript Classification.R <NKI_1M file> <sample_type> = 'breast'/'ovarian'; <cls> = 'b1.191'/'b1.371'/'b1'/'b2' ; <legacy_pipeline> = 'TRUE'/'FALSE' ; <correct_platform> = 'TRUE'/'FALSE' ; <missing2centroid> = 'TRUE'/'FALSE' <outcls> = 'output directory'";
 
 
+if (length(opts) < 4) {
+  print(usage); 
+} else {
+file <- opts[1];
+sample_type <- opts[2];
+cls <- opts[3];
+legacy_pipeline <- as.logical(opts[4]);
+correct_platform <- as.logical(opts[5]);
+missing2centroid <- as.logical(opts[6]);
+outcls <- as.character(opts[7])
+sink(file=paste0(outcls, gsub("\\.txt","", basename(file)), ".session.", sample_type,"-", cls,".txt"))
 
-# chris_cghsegmentation_functions.R
+print(paste0("scriptdir: ",scriptdir))
+
+#require(multicore) // disabled to circumvent setting up outside of server environment. 
+# no really heavy lifting done, segmentation could be run in parallel to decrease waiting time 
+#(without: ~ 1 min on 1 laptop core)
+# segmentation methods
+require(cghseg)
+# Range methods
+require(GenomicRanges)
+# interpolation and padding
+require(zoo)
+# shrunken centroid classification
+require(pamr)
+# BRCA1 and BRCA2 breast cancer classifiers
+require(nkiBRCA)
+
+####################################################################################################
+### functions (not in separate file because uses arguments above)
+####################################################################################################
+
+# doCghSeg #########################################################################################
+####################################################################################################
+# adapted from chris_cghsegmentation_functions.R
 # -------------------------------------------------------------------
 # Copyright 2011 Christiaan Klijn <c.klijn@nki.nl>
 # Project: CGH segmentation
@@ -43,16 +60,13 @@ usage <- "Rscript cmd_EL.R <NKI_1M file> <sample_type> <cls> <variation_pipeline
 # -------------------------------------------------------------------
 
 doCghSeg <- function(chromNum, allKC, chrom, maploc) {
-
-  require(cghseg)
-  require(GenomicRanges)
-
   tumnames <- colnames(allKC)[-1:-2]
   profiles <- as.matrix(allKC[chrom == chromNum, -c(1,2)])
   subchrom <- chrom[chrom==chromNum]
   submaploc <- maploc[chrom==chromNum]
-
-  print(paste('chrom', chromNum,'is ordered:', !any(!order(submaploc)==1:length(submaploc))))
+		
+	# check profiles are ordered (errors might be introduced by liftover)
+  stopifnot(order(submaploc)==1:length(submaploc)) 
 
   # Segmentation
   n <- nrow(profiles)
@@ -60,7 +74,6 @@ doCghSeg <- function(chromNum, allKC, chrom, maploc) {
   CGHo <- new("CGHoptions")
   alpha(CGHo) <- 0.1 ## look for 1 to a maximum of 500 segments per tumor,
   select(CGHo) <- "mBIC" ## this define the way the number of segment is selected ( in between 1 and Kmax)
-  #wavenorm(CGHo)<-'position' ## Wave correction using position
 
   CGHr <- uniseg(CGHd,CGHo) ##The segments with their mean can be found in CGHr@mu.
 
@@ -69,21 +82,19 @@ doCghSeg <- function(chromNum, allKC, chrom, maploc) {
   allmeans <- unlist(lapply(CGHr@mu, function (x) {return(x$mean)}))
 
   allID <-rep(gsub('X','', names(CGHr@mu)),
-    unlist(lapply(CGHr@mu, nrow)))
-
+    unlist(lapply(CGHr@mu, nrow))) 
+  
   segments <- GRanges(
     seqnames = Rle(paste('chr', chromNum, sep=''), length(allstart)),
     ranges=IRanges(start=submaploc[allstart], end=submaploc[allend]),
     seg.mean=allmeans,
-    ID=allID)
-
-  # Make a range object to contain the start and the end probe for each segment
+    ID=allID) # Make a range object to contain the start and the end probe for each segment
 
   return(segments)
 }
 
-
-#######################################
+# extractCghSeg####################################################################################
+###################################################################################################
 ##    Philip Schouten 2013 <philip.schouten@gmail.com>
 ##    make a chrom, maploc, sample .... sample dataframe from doCghSeg output
 
@@ -100,8 +111,10 @@ extractCghSeg <- function(cghSegObj, chrom, maploc, coln) {
   segMeans <- lapply(cghSegObj, function(x) values(x)$seg.mean)
   patients <- lapply(cghSegObj, function(x) values(x)$ID)
 
+	# unpack segments
   tmp1 <- lapply(unique(as.character(chrom)), function(x) rep(segMeans[[x]], times=((endInd[[x]]+1)-startInd[[x]])))
 
+	# catch error
   if(!length(unlist(tmp1)) == length(chrom)*length(unique(unlist(patients)))) {
     # duplicated maplocs in nki cause this problem
     # only chrom 3 has this problem:
@@ -110,30 +123,32 @@ extractCghSeg <- function(cghSegObj, chrom, maploc, coln) {
     stop('missing segMeans for some probes')
   }
 
-  names(tmp1) <- unique(as.character(chrom))
+	names(tmp1) <- unique(as.character(chrom))
+  # convert to matrix
   tmp2 <- lapply(unique(as.character(chrom)), function(x) matrix(tmp1[[x]], ncol= length(unique(patients[[x]]))))
 
-
+	# reduce to dataframe
   final <- do.call(rbind, tmp2)
 
+	# convert to KCSmart dataframe
   final2 <- data.frame(chrom=chrom, maploc=maploc, final, stringsAsFactors=F)
   colnames(final2) <- coln
 
   return(final2)
 }
 
-
-#######################################
+# fixMissing2Centroid#################################################################################################
+######################################################################################################################
 ##    Philip Schouten 2013 <philip.schouten@gmail.com>
 ##    find rows with all values missing and put them to classifier centroid
 ##    mean. Finds single NAs and replace with linear approximation through the
-##    zoo package or to the centroid with ct.
+##    zoo package. Or interpolate all missings with zoo package.
 
 ## the input definitions for the various classifiers are:
 ## Breast BRCA1 191 probe: cls='b1.191', sample_type='breast'
 ## Breast BRCA1 371 probe: cls='b1.371', sample_type='breast'
 ## Breast BRCA2 703 probe: cls='b2', sample_type='breast'
-## Ovarian: cls=NA, sample_type='ovarian', fillM=NA
+## Ovarian: cls=NA, sample_type='ovarian', fillM=NA 
 ## For ovarian cls is irrelevant because the processing is the same. If probes need to be set to centroid mean an
 ## ovarian cancer specific BRCA1 and BRCA2 centroid object should be created and the processing should be done as
 ## for the breast cancer case below. Since the high correlation between copy number segments it was deemed not necessary since
@@ -143,27 +158,21 @@ extractCghSeg <- function(cghSegObj, chrom, maploc, coln) {
 fixMissing2Centroid <- function(cls=c('b1.371', 'b1.191','b2',NA), dt, fillM=c('zoo', 'ct', NA), sample_type=c('breast','ovarian')) {
     # first create data.frame; this is equal for both tumor types
             
-        # De classifier (in 2008 door Simon Joosse ontwikkeld) is nog op 18 gebouwd.
-    plf <- read.delim(paste0(pipeline,"/bac/platformnki_hg18.txt"))
+    # the classifier was trained on hg18 data
+    plf <- read.delim(paste0(scriptdir,"/ref/platformnki_hg18.txt"))
 
-        # merge the input data with the platform file. The platform file contains duplicated chrom and maploc positions
-        # which correspond to triple spotted array positions which are marked by a different order value. In the merge we use
-        # all.x to retain the dimensions of the matrix.
-    comb<- merge(plf, dt, by.x=c('chrom','maploc'), by.y=c('chrom', 'maploc'), all.x=T)
+    # merge the input data with the platform file. The platform file contains duplicated chrom and maploc positions
+    # which correspond to triple spotted array positions which are marked by a different order value. In the merge we use
+    # all.x to retain the dimensions of the matrix.
+    comb <- merge(plf, dt, by.x=c('chrom','maploc'), by.y=c('chrom', 'maploc'), all.x=T)
     comb <- comb[order(comb$chrom, comb$maploc), ]
+    # remove chromosome Y values, not required for classification
     comb[comb$chrom == 24,-1:-8] <- 0        
     # we might have non-mappable positions; all values in a row are NA or random missings in a sample; some values in a row are NA
     allmissing <- apply(comb[, -1:-8], 1, function(x) all(is.na(x)))
     somemissing <- apply(comb[,-1:-8], 1, function(x) any(is.na(x))) & ! allmissing
     pos_some_missing <- which(is.na(as.matrix(comb[somemissing,-1:-8])))
-  
-    # set NA's on the Y (=24) chrom, to 0, it lacks classifier probes anyway
 
-    
-    # note for later: it would make sense to implement platform correction here. Think of how chromosome Y needs to be handled.
-    # if implemented here the missing classifier probes will be correctly changed to the average of the class centroids
-
-  
     if (sample_type == 'breast')  {
       # for breast cancer samples probes that contain only missings (nonmappable) should be set to the
       # to mean of the sum of the class centroids to prevent influence on the classification (Schouten et al BCRT 2012)
@@ -171,21 +180,15 @@ fixMissing2Centroid <- function(cls=c('b1.371', 'b1.191','b2',NA), dt, fillM=c('
           
       # get centroids of the various classifiers, get the number of columns and get the classifier probes
       if (cls=='b1.371') {
-        ct <- read.delim(paste0(pipeline,"/bac/B1371centroids.txt"), stringsAsFactors=F, header=F)
-        n <- 2
-        classprobe <- ! (ct[1] == ct[2])
+        ct <- b1.371.ct[,9:10]
         }
     
       if (cls=='b1.191') {
-        ct <- read.delim(paste0(pipeline,"/bac/B1centroids.txt"), stringsAsFactors=F, header=F)
-        n <- 3
-        classprobe <- ! (ct[2] == ct[3])
+        ct <- b1.191.ct[,9:10]
         }
     
       if (cls=='b2') {
-        ct <- read.delim(paste0(pipeline,"/bac/B2centroids.txt"), stringsAsFactors=F, header=F)
-        n <- 3
-        classprobe <- ! (ct[2] == ct[3])
+        ct <- b2.704.ct[,9:10]
 
         # here segmentation with NA approximated, since the segmentation functions do not work with missings
         # since the probes to be changed afterwards are defined earlier filling the missings here is no problem
@@ -201,28 +204,33 @@ fixMissing2Centroid <- function(cls=c('b1.371', 'b1.191','b2',NA), dt, fillM=c('
         comb[,-1:-8] <- extractCghSeg(sg, chrom=plf$chrom, maploc=plf$maploc, coln=colnames(dt))[,-1:-2]
         }
 
- 	#create a filling object
- 	fl <- matrix(rep((ct[,n-1]+ ct[,n])/2,   ncol(comb)-8), ncol=(ncol(comb)-8))
-			
-	# fill individual missing probes with classifier centroids in case ct is chosen
-	if(fillM=='ct') {
+      classprobe <- ! (ct[1] == ct[2])
+
+      #create a filling object
+      fl <- matrix(rep((ct[,1]+ ct[,2])/2,   ncol(comb)-8), ncol=(ncol(comb)-8))
+
+      # fill individual missing probes with classifier centroids in case ct is chosen
+      if(fillM=='ct') {
         tm <- as.matrix(comb[,-1:-8])
         tm[allmissing,] <- fl[allmissing,]
-        # change somemissing to interpolated, they're randomly missing and therefore should not be filled with centroid avg.
-        # set the segmented data back to NA for BRCA2 (for BRCA1 does not do anything)
+        #	 change somemissing to interpolated, they're randomly missing and therefore should not be filled with centroid avg.
+        # set the segmented data back to NA for BRCA2 (for BRCA1 does not do anything, some_missing are not yet filled, as
+        # is caused by segmentation for the BRCA2 classifier)
         tm[somemissing,][pos_some_missing] <- NA
         comb[,-1:-8] <- tm
         # fill random missings with interpolation
         comb[,-1:-8] <- na.approx(comb[,-1:-8], na.rm=F)
+        # push backward and forward to remove missings at the start and end
         comb[,-1:-8] <- na.locf(comb[,-1:-8], fromLast=T,na.rm=F)
         comb[,-1:-8] <- na.locf(comb[,-1:-8])
-    } else if (fillM=='zoo') {					
-    # fill with linear interpolation in case 'zoo' is chosen.	
+      }	else if (fillM=='zoo') {					
+        # fill with linear interpolation in case 'zoo' is chosen.	
         comb[,-1:-8] <- na.approx(comb[,-1:-8], na.rm=F)
+        # push backward and forward to remove missings at start and end
         comb[,-1:-8] <- na.locf(comb[,-1:-8], fromLast=T,na.rm=F)
         comb[,-1:-8] <- na.locf(comb[,-1:-8])
-  		}
-	    
+      }
+	     
     cat(paste(sum(allmissing & classprobe), ' classifier probes set to centroid for all samples\n', sep=""))
     cat(paste(sum(classprobe & somemissing ), ' classifier probes approximated or put to centroid in some samples \n', sep='')) 
     }	
@@ -243,61 +251,70 @@ fixMissing2Centroid <- function(cls=c('b1.371', 'b1.191','b2',NA), dt, fillM=c('
   return(comb[, colnames(comb) %in% colnames(dt)])
 }
 
+# fillMat ##############################################################################################################
+########################################################################################################################
+##    Philip Schouten 2020 <philip.schouten@gmail.com>
 # fill missing by linear interpolation and subsequently fill trailing and starting NAs by bringing backward and forward
 # the last known 
-fillMat <- function(dt) {
-        # De classifier (in 2008 door Simon Joosse ontwikkeld) is nog op 18 gebouwd.
-    plf <- read.delim(paste0(pipeline,"/bac/platformnki_hg18.txt"))
 
-        # merge the input data with the platform file. The platform file contains duplicated chrom and maploc positions
-        # which correspond to triple spotted array positions which are marked by a different order value. In the merge we use
-        # all.x to retain the dimensions of the matrix.
+fillMat <- function(dt) {
+    # The breast cancer classifier was developed on hg18 in 2008 by Joosse
+    plf <- read.delim(paste0(scriptdir,"/ref/platformnki_hg18.txt"))
+
+    # merge the input data with the platform file. The platform file contains duplicated chrom and maploc positions
+    # which correspond to triple spotted array positions which are marked by a different order value. In the merge we use
+    # all.x to retain the dimensions of the matrix.
     comb<- merge(plf, dt, by.x=c('chrom','maploc'), by.y=c('chrom', 'maploc'), all.x=T)
     comb <- comb[order(comb$chrom, comb$maploc), ]
-        # linear interpolation for ovarian cancer due to high correlation between probes.
+    # linear interpolation for ovarian cancer due to high correlation between probes.
     comb[,-1:-8] <- na.approx(comb[,-1:-8], na.rm=F)
     comb[,-1:-8] <- na.locf(comb[,-1:-8], fromLast=T, na.rm=F)
     comb[,-1:-8] <- na.locf(comb[,-1:-8])
     return(comb[, colnames(comb) %in% colnames(dt)])
 }
 
+# correctDataset  ######################################################################################################
+########################################################################################################################
+##    Philip Schouten 2020 <philip.schouten@gmail.com>
 # adjusted from Rubayte to include  breast and ovarian cancer correction
+# apply centering and scaling correction of breast cancer and ovarian cancer data.
+# Aim: correct centering and scaling differences that are assumed to 
+# arise between different copy number profiling methods/preprocessing methods.
+# the correction in this file is towards the BAC array data, and therefor applies 
+# to the breast cancer classifiers as provided in the nkiBRCA package.
+
 correctDataset <- function(dt, sample_type=c('breast','ovarian'),filedir) {
   #Author: Philip Schouten
-  # Aim: correct centering and scaling differences that are assumed to 
-  # arise between different copy number profiling methods/preprocessing methods.
-  # the correction in this file is towards the BAC array data, and therefor applies 
-  # to the breast cancer classifiers as provided in the nkiBRCA package.
+
   
   # load unsegmented breast or ovarian cancer ratios, depending on sample_type
   # breast  cancer unsegmented data:
   if (sample_type=='breast') {
-      load(paste0(filedir, '/AnnOncB1PaperRatios.RDa'))
-      ovr <- AnnOncB1PaperRatios
+      load(paste0(scriptdir, '/ref/AnnOncB1PaperRatios.RDa'))
+      refdata <- AnnOncB1PaperRatios
   }
   # ovarian cancer unsegmented data:
   if (sample_type=='ovarian') {
-    load(paste0(filedir, '/ov.ratios.RDa'))
-    ovr <- ov.ratios
+    load(paste0(scriptdir, '/ref/ov.ratios.RDa'))
+    refdata <- ov.ratios
   }
 
 
   # load platform file
   # platform file. These are the locations of the BACs. New data needs to be mapped
-  # to chr1:22 and chrX described in here (3248 probes). Average of the ratios within
+  # to chr1:22 and chrX described in here (3248 probes). N.B. this drops chrY however
+  # Y should not be taken into account in the correction as in the sequencing data
+  # has extreme values. Average of the ratios within
   # the BAC clone. E.g. if BAC clone is chr1 100000 - 200000, find all ratios within
   # this interval, take the mean, and use this as the ratio for this BAC location. 
-  plf <- read.delim(paste0(filedir, '/platformnki.txt'), sep='\t', stringsAsFactors=F)
+  plf <- read.delim(paste0(scriptdir, '/ref/platformnki_hg18.txt'), sep='\t', stringsAsFactors=F)
+  
+  # this is the data to correct
+  newdata <- (dt[1:3248,-1:-2])
+  meannew <- apply(newdata,1,mean) 
  
-
- 
-  # create example ratios
-  fakeratios <- (dt[1:3248,-1:-2])
-  meanfake <- apply(fakeratios,1,mean) 
-
- 
-  # mean ratios and segmented ratios
-  meanbr <- apply(ovr[1:3248,-1:-2],1,mean)
+  # this is the reference data
+  meanref <- apply(refdata[1:3248,-1:-2],1,mean)
 
   # for breast cancer correction based on ratios use:
   # - AnnOncB1PaperRatios
@@ -316,195 +333,179 @@ correctDataset <- function(dt, sample_type=c('breast','ovarian'),filedir) {
   # afterwards. If no unsegmented data is available it's possible to perform correction
   # with the segmented data. Always check afterwards that the average profiles better resemble
   # each other and for location specific differences
-  ft <- glm(sort(meanbr) ~ sort(meanfake))
+  ft <- glm(sort(meanref) ~ sort(meannew))
 
   # correct dataset
-  correctedfake <- (fakeratios  * coef(ft)[2]) +  coef(ft)[1]
+  correctednew <- (newdata  * coef(ft)[2]) +  coef(ft)[1]
   print(coef(ft))
 
 
-  dt[1:3248, -1:-2] <- correctedfake
+  dt[1:3248, -1:-2] <- correctednew
 
   return(dt)
 }
 
+##############################################################################
+## Classify 
+##############################################################################
 
-if (length(opts) < 4) {
-  print(usage);
-} else {
-  file <- opts[1];
-  sample_type <- opts[2];
-  cls <- opts[3];
-  variation_pipeline <- as.logical(opts[4]);
-  correct_platform <- as.logical(opts[5]);
-  missing2centroid <- as.logical(opts[6]);
-  print(file)
-  print(sample_type)
-  print(cls)
-  print(variation_pipeline)
-  print(correct_platform)
-  print(missing2centroid)
-   stopifnot(file.exists(file))
-  tmp <- read.delim(file, stringsAsFactors=F)
-  print(head(colnames(tmp)))
-  colnames(tmp)[3] <- 'chrom'
-  # De classifier (in 2008 door Simon Joosse ontwikkelt) is nog op 18 gebouwd.
-  plf <- read.delim(paste0(pipeline,"/bac/platformnki_hg18.txt"))
+print(file)
+print(sample_type)
+print(cls)
+print(legacy_pipeline)
+print(correct_platform)
+print(missing2centroid)
+stopifnot(file.exists(file))
+tmp <- read.delim(file, stringsAsFactors=F)
+colnames(tmp)[3] <- 'chrom'
 
-  comb <- merge(plf,tmp, by='Order', all.x=T)
-  comb <- comb[order(comb$chrom.x, comb$maploc), ]
+# the breast cancer classifier was built on hg 18 in 2008 (Joosse)
+plf <- read.delim(paste0(scriptdir,"/ref/platformnki_hg18.txt"))
 
-  print(head(colnames(comb)),20)
+comb <- merge(plf,tmp, by='Order', all.x=T)
+comb <- comb[order(comb$chrom.x, comb$maploc), ]
 
-  kc <- data.frame(chrom=plf$chrom, maploc=plf$maploc, comb[,-1:-17])
-  print(colnames(comb[1:18]))
-  print(head(colnames(kc),4))
+kc <- data.frame(chrom=plf$chrom, maploc=plf$maploc, comb[,-1:-17])
 
-  # fixed pipelines (these could also be called with arguments in the process.sh and the correct ratio/segment output
-  # of variations below (line 285)):
-  if (! variation_pipeline) {
-    if (sample_type=='breast' & cls =='b1.191') {
-      # flow 1 breast BRCA1 191 without platform correction
-      kc <- fixMissing2Centroid('b1.191', dt=kc, fillM='ct', sample_type='breast')
-      print(any(is.na(as.matrix(kc))))
-      # since kc contains no missings the fixMissing2Centroid(sample_type='ovarian' only does segmentation)
-      sg <- fixMissing2Centroid(dt=kc,  sample_type='ovarian')
-      pred <- apply(kc[,-1:-2], 2, b1191)
-      }
+print('created KC dataframe')
 
-    if (sample_type=='breast' & cls =='b1.371')  {
-      # flow 2 breast BRCA1 371 without platform correction
-      kc <- fixMissing2Centroid('b1.371', dt=kc,fillM='ct', sample_type='breast')
-      print(any(is.na(as.matrix(kc))))
-      # since kc contains no missings the fixMissing2Centroid(sample_type='ovarian' only does segmentation)
-      sg <- fixMissing2Centroid(dt=kc,  sample_type='ovarian')
-      pred <- apply(kc[,-1:-2], 2, b1371)
-      }
+# fixed pipelines (these could also be called with arguments in the process.sh and the correct ratio/segment output
+# of variations below (line 285)):
+if (legacy_pipeline) {
+  print('run legacy pipeline')
+  if (sample_type=='breast' & cls =='b1.191') {
+    # flow 1 breast BRCA1 191 without platform correction
+    kc <- fixMissing2Centroid('b1.191', dt=kc, fillM='ct', sample_type='breast')
+    # since kc contains no missings the fixMissing2Centroid(sample_type='ovarian' only does segmentation)
+    sg <- fixMissing2Centroid(dt=kc,  sample_type='ovarian')
+    pred <- apply(kc[,-1:-2], 2, b1191)
+    }
 
-    if (sample_type=='breast' & cls =='b2')  {
-      # flow 3 breast BRCA2 without platform correction
-      sg <- fixMissing2Centroid('b2', dt=kc,fillM='ct', sample_type='breast')
-      print(any(is.na(as.matrix(kc))))
-      # fill missings by interpolation (this needs to be done here because it overwrites kc)
-      kc <- fillMat(kc)
-      pred <- apply(sg[,-1:-2], 2, b2704)
-      }  
+  if (sample_type=='breast' & cls =='b1.371')  {
+    # flow 2 breast BRCA1 371 without platform correction
+    kc <- fixMissing2Centroid('b1.371', dt=kc,fillM='ct', sample_type='breast')
+    # since kc contains no missings the fixMissing2Centroid(sample_type='ovarian' only does segmentation)
+    sg <- fixMissing2Centroid(dt=kc,  sample_type='ovarian')
+    pred <- apply(kc[,-1:-2], 2, b1371)
+    }
 
-    if (sample_type=='ovarian' & cls=='b1') {
-      # flow 4 ovarian BRCA1 with platform correction
-      # fill missings by linear interpolation
-      kc <- fillMat(kc[1:3248,])
-      # platformcorrection ovarian
-      kc <- correctDataset(kc[1:3248,], sample_type='ovarian', filedir=paste0(pipeline,'/brcaClassifier'))
-      # now only uses segmentation from fixMissing2Centroid
-      print(any(is.na(kc)))
-      print(head(kc[kc$chrom == 22,]))
-      sg <- fixMissing2Centroid(cls=cls, sample_type='ovarian', dt=kc)
-      load(paste0(pipeline,'/brcaClassifier/ov.B1.RDa'))
-      pred <- with(ov.B1, pamr.predict(m, newx=as.matrix(sg[1:3248,-1:-2]), 
-        threshold=delta[sel],type='posterior'))[,2]
-      }
-
-      if (sample_type=='ovarian' & cls=='b2') {
-      # flow 5 ovarian BRCA2 with platform correction
-      # fill missings by linear interpolation
-      kc <- fillMat(kc[1:3248,])
-      # platformcorrection ovarian
-      kc <- correctDataset(kc[1:3248,], sample_type='ovarian', filedir=paste0(pipeline,'/brcaClassifier'))
-      # now only uses segmentation from fixMissing2Centroid
-      sg <- fixMissing2Centroid(cls=cls,sample_type='ovarian', dt=kc)
-      load(paste0(pipeline,'/brcaClassifier/ov.B2.RDa'))      
-      pred <- with(ov.B2, pamr.predict(m, newx=as.matrix(sg[1:3248,-1:-2]), 
-        threshold=delta[sel], type='posterior'))[,2]
-      }
-  }
-   
-  # return variations of the ratios and segments for plotting/classifation outside of the fixed pipelines
-
-  # platform correction, segmentation and classification can't handle NAs. Due to correlation between neighbouring locations
-  # linear interpolation is reasonable, alternative is to set the missing probe to the  average of the class centroids 
-  # (no effect of the probe for classifcation). For breast cancer this is handles in fixMissing2Centroid. For ovarian cancer
-  # in principle is handled by linear interpolation. 
-  # we save a matrix of missing values so breast cancer can be corrected using existing functions and for qc for ovarian cancer
-  if (variation_pipeline) {  
-    missing_mat <- is.na(as.matrix(kc))
-
+  if (sample_type=='breast' & cls =='b2')  {
+    # flow 3 breast BRCA2 without platform correction
+    sg <- fixMissing2Centroid('b2', dt=kc,fillM='ct', sample_type='breast')
+    # fill missings by interpolation (this needs to be done here because it overwrites kc)
     kc <- fillMat(kc)
+    pred <- apply(sg[,-1:-2], 2, b2704)
+    }  
 
-    if (correct_platform) {
-      kc <- correctDataset(kc, sample_type, filedir=paste0(pipeline,'/brcaClassifier'))
+  if (sample_type=='ovarian' & cls=='b1') {
+    # flow 4 ovarian BRCA1 with platform correction
+    # fill missings by linear interpolation
+    kc <- fillMat(kc[1:3248,])
+    # platformcorrection ovarian
+    kc <- correctDataset(kc[1:3248,], sample_type='ovarian', filedir=paste0(scriptdir,'/ref'))
+    # now only uses segmentation from fixMissing2Centroid
+    sg <- fixMissing2Centroid(cls=cls, sample_type='ovarian', dt=kc)
+    load(paste0(scriptdir,'/ref/ov.B1.RDa'))
+    pred <- with(ov.B1, pamr.predict(m, newx=as.matrix(sg[1:3248,-1:-2]), 
+      threshold=delta[sel],type='posterior'))[,2]
     }
 
-    # correct_platform needs to occur before changing the centroids of missing class otherwise the values will be 
-    # adjusted by platform correction
-    if (missing2centroid) {
-      # reset the initial missing values
-      kc <- as.matrix(kc)
-      kc[missing_mat] <- NA
-      kc <- data.frame(kc, stringsAsFactors=F)
-      kc <- fixMissing2Centroid(cls=cls, dt=kc, fillM='ct', sample_type=sample_type)
+    if (sample_type=='ovarian' & cls=='b2') {
+    # flow 5 ovarian BRCA2 with platform correction
+    # fill missings by linear interpolation
+    kc <- fillMat(kc[1:3248,])
+    # platformcorrection ovarian
+    kc <- correctDataset(kc[1:3248,], sample_type='ovarian', filedir=paste0(scriptdir,'/ref'))
+    # now only uses segmentation from fixMissing2Centroid
+    sg <- fixMissing2Centroid(cls=cls,sample_type='ovarian', dt=kc)
+    load(paste0(scriptdir,'/ref/ov.B2.RDa'))      
+    pred <- with(ov.B2, pamr.predict(m, newx=as.matrix(sg[1:3248,-1:-2]), 
+      threshold=delta[sel], type='posterior'))[,2]
     }
+  print('finished legacy pipeline')
+}
+ 
+# return variations of the ratios and segments for plotting/classifation outside of the fixed pipelines
 
-    # not optional ; output requires sg
-    #  if (segment) {
-    # since missings are filled above, the only part of the script that is used is segmentation
-    if (cls =='b2' && sample_type=='breast' && missing2centroid) {
-      print(head(kc[,1:5]))
-      sg <- kc
-      print('no')
-    } else {
-      print(any(is.na(kc)))
-      print(head(kc[kc$chrom == 22,]))
-      sg <- fixMissing2Centroid(sample_type='ovarian', dt=kc)
-      print('yes')
-    }
+# platform correction, segmentation and classification can't handle NAs. Due to correlation between neighbouring locations
+# linear interpolation is reasonable, alternative is to set the missing probe to the  average of the class centroids 
+# (no effect of the probe for classifcation). For breast cancer this is handles in fixMissing2Centroid. For ovarian cancer
+# in principle is handled by linear interpolation. 
+# we save a matrix of missing values so breast cancer can be corrected using existing functions and for qc for ovarian cancer
+if (! legacy_pipeline) {  
+  print('start pipeline with platform correction')
+  missing_mat <- is.na(as.matrix(kc))
+
+  kc <- fillMat(kc)
+
+  if (correct_platform) {
+    kc <- correctDataset(kc, sample_type, filedir=paste0(scriptdir,'/ref'))
   }
+  print('corrected dataset')
+
+  # correct_platform needs to occur before changing the centroids of missing class otherwise the values will be 
+  # adjusted by platform correction
+  if (missing2centroid) {
+    # reset the initial missing values
+    kc <- as.matrix(kc)
+    # for the BRCA2 breast cancer classifier kc will be overwritten and thus no ratios file will exist. 
+    # therefore we save before resetting the missing values. In the ratios file the missings are interpolated and not set to centroid.
+    # This is not fixable, as the centroid is set after segmentation. N.B. default is to let interpolation and segmentation 
+    # and not to set to centroid.
+    if (cls =='b2' && sample_type=='breast') {
+      ratb2 <- kc
+    }
+    kc[missing_mat] <- NA
+    kc <- data.frame(kc, stringsAsFactors=F)
+    kc <- fixMissing2Centroid(cls=cls, dt=kc, fillM='ct', sample_type=sample_type)
+    print('fixed missing to centroid') 
+  }
+
+  # not optional ; output requires sg
+  #  if (segment) {
+  # since missings are filled above, the only part of the script that is used is segmentation
+  if (cls =='b2' && sample_type=='breast' && missing2centroid) {
+    sg <- kc
+  } else {
+    sg <- fixMissing2Centroid(sample_type='ovarian', dt=kc)
+  }
+  print('segmented')
 
   # classifiers could be run here to also produce pred.
+  if (cls == 'b1.191' && sample_type=='breast') {
+    pred <- apply(kc[,-1:-2], 2, b1191)  
+  } else if (cls == 'b1.371' && sample_type=='breast') {
+    pred <- apply(kc[,-1:-2], 2, b1371)  
+  } else if (cls == 'b2' && sample_type=='breast') {
+    pred <- apply(kc[,-1:-2], 2, b2704)  
+  } else if (cls == 'b1' &&  sample_type=='ovarian') {
+    load(paste0(scriptdir,'/ref/ov.B1.RDa'))
+    pred <- with(ov.B1, pamr.predict(m, newx=as.matrix(sg[1:3248,-1:-2]), 
+      threshold=delta[sel],type='posterior'))[,2]
+  } else if (cls == 'b2' &&  sample_type=='ovarian') {
+    load(paste0(scriptdir,'/ref/ov.B2.RDa'))
+    pred <- with(ov.B2, pamr.predict(m, newx=as.matrix(sg[1:3248,-1:-2]), 
+      threshold=delta[sel],type='posterior'))[,2]
+  } 
+  print('created predictions')
+}
 
-  if (exists("pred")) {
-      print(head(pred))
-      print(dim(pred))
-  }
-
-  # since we do classification in the pipeline external classification is not necessary anymore,
-  # therefor statistics page is irrelevant
+if (exists('ratb2')) {
+  ratios <- as.data.frame(ratb2[,-1:-2]);
+} else {
   ratios <- as.data.frame(kc[,-1:-2]);
-  segments <- as.data.frame(sg[,-1:-2]);
-  # cnames <- c(" ", "Hybridisation quality", "Profile quality", "Mean standard deviation",
-  #   "Mean intensity channel 1", "Mean intensity channel 2")
-  # str(cnames)
-  # statistics <- as.data.frame(matrix(data = 1, nrow = ncol(segments), ncol = length(cnames)))
-  # statistics[1] <- colnames(segments)
-  # colnames(statistics) <- cnames
+}
+segments <- as.data.frame(sg[,-1:-2]);
 
-  # add to filename the settings of the pipeline that produced the output.
+write.table(ratios, file = paste0(outcls, gsub("\\.txt","", basename(file)), ".ratios-", cls,'-',sample_type,'-',legacy_pipeline,'-',correct_platform,'-',missing2centroid, ".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
+write.table(segments, file = paste0(outcls, gsub("\\.txt","", basename(file)), ".segments-", cls,'-',sample_type,'-',legacy_pipeline,'-',correct_platform,'-',missing2centroid ,".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
 
-  print(dim(ratios))
-  print(head(ratios[,1:5]))
-  print(dim(segments))
-  print(head(segments[,1:5]))
-  print(colnames(kc)[1:6])
-  
-  print(paste0(gsub("\\.txt","", basename(file)), ".ratios.tsv"))
+pred.out <- data.frame(sample_id = colnames(ratios), class_probability=round(pred,3))
+write.table(pred.out, file = paste0(outcls, gsub("\\.txt","", basename(file)), ".pred.", "-", cls,'-',sample_type,'-',legacy_pipeline,'-',correct_platform,'-',missing2centroid ,".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
 
-  print(paste0('table of all equal ratios:', table(apply(ratios[,-1:-2],1,function(x) all(x==x[1])))))
-  print(paste0('table of all equal segments:', table(apply(segments[,-1:-2],1,function(x) all(x==x[1])))))
+print('wrote output files')
 
-
-  #WriteXLS(c("ratios", "segments", "statistics"), paste0(gsub("\\.txt","", basename(file)), ".xls"))
-  write.table(ratios, file = paste0(gsub("\\.txt","", basename(file)), ".ratios-", cls,'-',sample_type,'-',variation_pipeline,'-',correct_platform,'-',missing2centroid, ".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
-  write.table(segments, file = paste0(gsub("\\.txt","", basename(file)), ".segments-", cls,'-',sample_type,'-',variation_pipeline,'-',correct_platform,'-',missing2centroid ,".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
-  #write.table(statistics, file = paste0(gsub("\\.txt","", basename(file)), ".statistics.tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
-
-  if (exists("pred"))  {
-    pred.out <- data.frame(sample_id = colnames(ratios), class_probability=round(pred,3))
-    print(dim(pred.out))
-    write.table(pred.out, file = paste0(gsub("\\.txt","", basename(file)), ".pred.", "-", cls,'-',sample_type,'-',variation_pipeline,'-',correct_platform,'-',missing2centroid ,".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
-  }
-
-  sink(file=paste0(gsub("\\.txt","", basename(file)), ".session.", sample_type,"-", cls,".txt"))
-  print(sessionInfo())
-  print(paste0('opts:', opts))
-  sink()
+print(sessionInfo())
+print(paste0('opts:', opts))
+sink()
 }

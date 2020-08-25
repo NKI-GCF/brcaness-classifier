@@ -38,9 +38,11 @@ if [ -d /config ]; then
 
 fi
 
-[[ "$BRCA_NUM" =~ ^[12]$ ]] || die "BRCA_NUM missing in config.txt specify BRCA_NUM=1 or BRCA_NUM=2 (also for ovarium carcinoma)"
+###PCS
+### These checks need to be revisited
+###[[ "$BRCA_NUM" =~ ^[12]$ ]] || die "BRCA_NUM missing in config.txt specify BRCA_NUM=1 or BRCA_NUM=2 (also for ovarium carcinoma)"
 
-[[ "$TYPE" =~ ^[12]$ ]] || die "TYPE missing in config.txt TYPE=1 for mamma-, TYPE=2 for ovarium carcinoma."
+###[[ "$TYPE" =~ ^[12]$ ]] || die "TYPE missing in config.txt TYPE=1 for mamma-, TYPE=2 for ovarium carcinoma."
 
 # Defaults, do not set memory too high or this may crash.
 [ -z "$PARALLEL" ] && PARALLEL=2
@@ -91,7 +93,8 @@ rm_old() {
 }
 
 out="/output/NKI_1m${TAG}.txt"
-outxlsx="${out%.txt}.xlsx"
+### PCS remove
+### outxlsx="${out%.txt}.xlsx"
 
 chromInfo=/app/chromInfo.txt
 
@@ -229,6 +232,11 @@ mkdir -p qc${KBIN_SIZE}K
 [ -f "$out" ] || Rscript /app/create_NKI_1m.R ${KBIN_SIZE} ${QUALITY_CUTOFF} ${SEQUENCE_LENGTH} ${BLACKLIST} NKI_1m${TAG} 2>&1 | tee /output/log/create_NKI_1m${TAG}.log
 
 #[ -f "$outxlsx" ] || Rscript /app/cmd_EL.R "$out"
+
+# run classifier 
+outcls = /output/cls/
+Rscript /app/Classification.R ${out} ${TYPE} ${BRCA_NUM} ${LEGACY} ${CPFCOR} ${SETM2C} ${outcls}
+
 
 # next: classifier
 #Rscript /app/classifierR.R \

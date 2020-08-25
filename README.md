@@ -70,12 +70,33 @@ done < <(ls -1 *.fastq.gz | xargs -n 1 readlink | xargs -n 1 dirname | xargs -n 
 MEM=3G
 THREADS=4
 PARALLEL=2
-TYPE=2
-BRCA_NUM=1
+
+# breast or ovarian cancer
+TYPE=breast # / ovarian
+
+# b1.191 : breast BRCA1 191 probe classifier
+# b1.371 : breast BRCA1 371 probe classifier
+# b1 : for ovarian cancer BRCA1 classifier
+# b2 : for breast or ovarian cancer BRCA2 classifier
+BRCA_NUM=b1.191 #/ b1.371 / b1 / b2 
+
+# legacy pipeline (according to Schouten et al Mol Oncol 2015), fixed pipeline
+# for non-legacy pipeline, options are controlled by CPFCOR and SETM2C
+LEGACY=FALSE # / TRUE
+
+# CPFCOR: apply crossplatform correction
+CPFCOR=TRUE # / FALSE
+
+# SETM2C: set missing values to centroid mean (TRUE, null influence of the probe) or 
+# linear interpolation of missing values (FALSE)
+SETM2C=FALSE # / TRUE
+
+# outcls : output directory of classification. Note that trailing / is required for properly constructing
+# the directory name: e.g. /output/cls/
+
 BLACKLIST=GRCh38-blacklist-merged.bed
 TAG=-GRCh38-blacklist-merged
 ```
-#### TYPE and BRCA_NUM are currently unused
 
 # To continue e.g. when more files were added later, you can use:
 ```
