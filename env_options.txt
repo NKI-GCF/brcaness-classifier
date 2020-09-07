@@ -3,7 +3,7 @@
 PRODUCTION TRUE     FALSE                    # default: refuse experimental settings
 
 CN         NKI      [A-Za-z0-9_.-]{2,10}     # Company name; readgroups and output name
-BRCA_CLASS b1.191   (b\.371|b1|b2)           # see README.md
+BRCA_CLASS b1.191   (b1\.371|b1|b2)           # see README.md
 TYPE       breast   ovarian
 OUTCLS     cls      [A-Za-z0-9_.-]{3,10}     # output subdirectory for classification
 TAG        -GRCh38-blacklist-merged -[A-Za-z0-9._-]+ #postfix for NKI_1m file

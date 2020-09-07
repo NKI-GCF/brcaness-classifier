@@ -1,7 +1,6 @@
 FROM debian:stretch-slim
 # (c) Roel Kluin r.kluin@nki.nl GPL-2.0
 
-# 4 tested variables should be included in docker build via e.g. --build-arg BWA_VERSION=0.7.17
 RUN BWA_VERSION=0.7.17 \
   && KBIN_SIZE=20 \
   && MINQUAL=15 \

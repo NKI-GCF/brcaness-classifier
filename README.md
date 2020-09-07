@@ -1,12 +1,8 @@
 # Brcaness-classifier
 
-### To setup Docker
-Use documentation [here](https://docs.docker.com/get-docker/) or provided by your Linux distribution.
+To setup Docker use documentation [here](https://docs.docker.com/get-docker/) or provided by your Linux distribution.
 
 ## Building the docker image
-Building takes a few hours, the first time. Rebuilding is required for every significant Dockerfile change,
-or for script file changes. For the latter, build time is much shorter.
-
 Dependent on your docker configuration, you may have to add the flag '--network=host'.
 
 ```bash
@@ -15,15 +11,14 @@ docker build --tag=ovabrca:$tag .
 ```
 
 ======
-## Data access for the container
+## Preparing docker container requirements
 
-When the docker image is run, the -v option allows to bind mount a directory to a docker container. This docker requires a ref and output mount and input unless continuing with previously processed data..
+When the docker image is run, the -v option allows to bind mount a directory (or a file) to a docker container. This docker requires a ref and output mounts and input, unless continuing with previous data.
 
-Docker does not follow file permissions so do not expose sensitive parts of a filesystem to a docker container. Read about security [here](https://docs.docker.com/engine/security/security/#docker-daemon-attack-surface).
+Docker does not follow file permissions, so do not expose sensitive parts of a filesystem to a docker container. Read about security [here](https://docs.docker.com/engine/security/security/#docker-daemon-attack-surface).
 
-The ref mount should contain a fasta which is, if not already, indexed - initialized for bwa - the first time the docker is run.
+The ref mount should contain a fasta that is bwa indexed, meaning initialized for bwa. The docker image will index, if the fasta was not already.
 
-The primary assembly should be unchanged per GRCh38 releases; the docker runs checks to confirm this.
 
 ```bash
 cd $your_dedicated_genome_directory
@@ -33,13 +28,14 @@ reference="-v `pwd`:/ref:rw"
 cd -
 ```
 
-An output directory is required
-```bash
-mkdir -p output/
-```
+The primary assembly should be unchanged per GRCh38 Ensembl releases; when running the docker container checks should fail otherwise.
 
-An input mount is required if processing from raw data.
+## Data access for the container
+
+An input bind mount is required if processing from raw data.
+
 ```bash
+mkdir -p output/ input/
 input="-v $path_to_fastq_files:/input:ro"
 ```
 
@@ -55,22 +51,21 @@ while read d; do
 done < <(ls -1 *.fastq.gz | xargs -n 1 readlink | sed -r 's~/Samples_[^/]+/[^/]+$~~' | sort -u)
 ```
 
-## Configuration files
+## Configuration
 
-To resolve file(s) per sample a tab-separated file containing regular expression and sample basename can be added to the input or output directory, e.g.:
-**input/files.txt**
+To resolve file(s) per sample a tab-separated **files.txt** file containing regular expression and sample basename can be added to the input or output directory:
 
-### example
+### input/files.txt example
 ```
 .*5610_89_CF25885_.*.gz 5610_89_CF25885
 .*5610_8_CF13235_.*.gz  5610_8_CF13235
 ```
 
-If not present the provided /input directory will be queried for .fastq.gz files and output samplenames will consist of the the filename part before an index sequence 6 to 8bp in length.
+If not present the provided /input directory will be queried (recursively) for .fastq.gz files and output samplenames will consist of the the basename part before an index sequence 6 to 8bp in length.
 
 To adjust pipeline parameters, use docker run with --env PARAM=value or --env-file=**config.txt** in the docker run command. See env_options.txt for parameters, their defaults and allowed alternative settings (variables therein are assigned as in a [bash] shell - don't use whitespace)
 
-### example
+### config.txt example
 ```
 MEM=3G
 THREADS=4
@@ -119,3 +114,13 @@ docker run --rm -t -i -u $UID:$GROUPS \
   --env-file=config.txt \
   ovabrca:$tag bash
 
+## 
+docker run --rm -u $UID:$GROUPS \
+  -v $path/output/:/output:rw \
+  $input \
+  $reference \
+  -v $another_path/GRCh38_51bp-q15-20k.bed.gz:/app/GRCh38_51bp-q15-20k.bed.gz:ro \
+  --env PRODUCTION=FALSE \
+  --env TAG=-test \
+  --env SEQLEN=51 \
+  ovabrca:0.9

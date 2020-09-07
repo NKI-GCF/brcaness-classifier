@@ -437,7 +437,9 @@ print('created KC dataframe')
     load(paste0(scriptdir,'/ov.B2.RDa'))
     pred <- with(ov.B2, pamr.predict(m, newx=as.matrix(sg[1:3248,-1:-2]), 
       threshold=delta[sel],type='posterior'))[,2]
-  } 
+  } else {
+    stop(paste(cls, "is not implemented for", sample_type))
+  }
   print('created predictions')
 
 if (exists('ratb2')) {
