@@ -15,20 +15,27 @@ if (m) {
 }
 
 print(paste0("options: '", paste(opts, collapse="', '"), "'"))
-usage <- "Rscript Classification.R <NKI_1M file> <sample_type> = 'breast'/'ovarian'; <cls> = 'b1.191'/'b1.371'/'b1'/'b2' ; <legacy_pipeline> = 'TRUE'/'FALSE' ; <correct_platform> = 'TRUE'/'FALSE' ; <missing2centroid> = 'TRUE'/'FALSE' <outcls> = 'output directory'";
+usage <- "Rscript Classification.R <NKI_1M file> <sample_type> = breast/ovarian; <cls> = b1.191/b1.371/b1/b2 ; <correct_platform> = TRUE/FALSE ; <missing2centroid> = TRUE/FALSE <outcls> = output directory";
 
 
-if (length(opts) < 4) {
+if (length(opts) != 6) {
   print(usage); 
 } else {
 file <- opts[1];
 sample_type <- opts[2];
 cls <- opts[3];
-legacy_pipeline <- as.logical(opts[4]);
-correct_platform <- as.logical(opts[5]);
-missing2centroid <- as.logical(opts[6]);
-outcls <- as.character(opts[7])
-sink(file=paste0(outcls, gsub("\\.txt","", basename(file)), ".session.", sample_type,"-", cls,".txt"))
+correct_platform <- as.logical(opts[4]);
+missing2centroid <- as.logical(opts[5]);
+outcls <- as.character(opts[6])
+
+outbase <- paste0(outcls, "/", sub("\\.txt","", basename(file)))
+outbelong <- paste0(cls,'-',sample_type,'-',correct_platform,'-',missing2centroid)
+
+cls_session.txt <- paste0(outbase, ".session.", outbelong,".txt")
+if (file.exists(cls_session.txt)) {
+  stop(paste("Session file already present, remove", cls_session.txt, "and rerun to overwrite."))
+}
+sink(file=cls_session.txt)
 
 print(paste0("scriptdir: ",scriptdir))
 
@@ -159,7 +166,7 @@ fixMissing2Centroid <- function(cls=c('b1.371', 'b1.191','b2',NA), dt, fillM=c('
     # first create data.frame; this is equal for both tumor types
             
     # the classifier was trained on hg18 data
-    plf <- read.delim(paste0(scriptdir,"/ref/platformnki_hg18.txt"))
+    plf <- read.delim(paste0(scriptdir,"/platformnki_hg18.txt"))
 
     # merge the input data with the platform file. The platform file contains duplicated chrom and maploc positions
     # which correspond to triple spotted array positions which are marked by a different order value. In the merge we use
@@ -259,7 +266,7 @@ fixMissing2Centroid <- function(cls=c('b1.371', 'b1.191','b2',NA), dt, fillM=c('
 
 fillMat <- function(dt) {
     # The breast cancer classifier was developed on hg18 in 2008 by Joosse
-    plf <- read.delim(paste0(scriptdir,"/ref/platformnki_hg18.txt"))
+    plf <- read.delim(paste0(scriptdir,"/platformnki_hg18.txt"))
 
     # merge the input data with the platform file. The platform file contains duplicated chrom and maploc positions
     # which correspond to triple spotted array positions which are marked by a different order value. In the merge we use
@@ -290,12 +297,12 @@ correctDataset <- function(dt, sample_type=c('breast','ovarian'),filedir) {
   # load unsegmented breast or ovarian cancer ratios, depending on sample_type
   # breast  cancer unsegmented data:
   if (sample_type=='breast') {
-      load(paste0(scriptdir, '/ref/AnnOncB1PaperRatios.RDa'))
+      load(paste0(scriptdir, '/AnnOncB1PaperRatios.RDa'))
       refdata <- AnnOncB1PaperRatios
   }
   # ovarian cancer unsegmented data:
   if (sample_type=='ovarian') {
-    load(paste0(scriptdir, '/ref/ov.ratios.RDa'))
+    load(paste0(scriptdir, '/ov.ratios.RDa'))
     refdata <- ov.ratios
   }
 
@@ -307,7 +314,7 @@ correctDataset <- function(dt, sample_type=c('breast','ovarian'),filedir) {
   # has extreme values. Average of the ratios within
   # the BAC clone. E.g. if BAC clone is chr1 100000 - 200000, find all ratios within
   # this interval, take the mean, and use this as the ratio for this BAC location. 
-  plf <- read.delim(paste0(scriptdir, '/ref/platformnki_hg18.txt'), sep='\t', stringsAsFactors=F)
+  plf <- read.delim(paste0(scriptdir, '/platformnki_hg18.txt'), sep='\t', stringsAsFactors=F)
   
   # this is the data to correct
   newdata <- (dt[1:3248,-1:-2])
@@ -352,7 +359,6 @@ correctDataset <- function(dt, sample_type=c('breast','ovarian'),filedir) {
 print(file)
 print(sample_type)
 print(cls)
-print(legacy_pipeline)
 print(correct_platform)
 print(missing2centroid)
 stopifnot(file.exists(file))
@@ -360,7 +366,7 @@ tmp <- read.delim(file, stringsAsFactors=F)
 colnames(tmp)[3] <- 'chrom'
 
 # the breast cancer classifier was built on hg 18 in 2008 (Joosse)
-plf <- read.delim(paste0(scriptdir,"/ref/platformnki_hg18.txt"))
+plf <- read.delim(paste0(scriptdir,"/platformnki_hg18.txt"))
 
 comb <- merge(plf,tmp, by='Order', all.x=T)
 comb <- comb[order(comb$chrom.x, comb$maploc), ]
@@ -371,60 +377,6 @@ print('created KC dataframe')
 
 # fixed pipelines (these could also be called with arguments in the process.sh and the correct ratio/segment output
 # of variations below (line 285)):
-if (legacy_pipeline) {
-  print('run legacy pipeline')
-  if (sample_type=='breast' & cls =='b1.191') {
-    # flow 1 breast BRCA1 191 without platform correction
-    kc <- fixMissing2Centroid('b1.191', dt=kc, fillM='ct', sample_type='breast')
-    # since kc contains no missings the fixMissing2Centroid(sample_type='ovarian' only does segmentation)
-    sg <- fixMissing2Centroid(dt=kc,  sample_type='ovarian')
-    pred <- apply(kc[,-1:-2], 2, b1191)
-    }
-
-  if (sample_type=='breast' & cls =='b1.371')  {
-    # flow 2 breast BRCA1 371 without platform correction
-    kc <- fixMissing2Centroid('b1.371', dt=kc,fillM='ct', sample_type='breast')
-    # since kc contains no missings the fixMissing2Centroid(sample_type='ovarian' only does segmentation)
-    sg <- fixMissing2Centroid(dt=kc,  sample_type='ovarian')
-    pred <- apply(kc[,-1:-2], 2, b1371)
-    }
-
-  if (sample_type=='breast' & cls =='b2')  {
-    # flow 3 breast BRCA2 without platform correction
-    sg <- fixMissing2Centroid('b2', dt=kc,fillM='ct', sample_type='breast')
-    # fill missings by interpolation (this needs to be done here because it overwrites kc)
-    kc <- fillMat(kc)
-    pred <- apply(sg[,-1:-2], 2, b2704)
-    }  
-
-  if (sample_type=='ovarian' & cls=='b1') {
-    # flow 4 ovarian BRCA1 with platform correction
-    # fill missings by linear interpolation
-    kc <- fillMat(kc[1:3248,])
-    # platformcorrection ovarian
-    kc <- correctDataset(kc[1:3248,], sample_type='ovarian', filedir=paste0(scriptdir,'/ref'))
-    # now only uses segmentation from fixMissing2Centroid
-    sg <- fixMissing2Centroid(cls=cls, sample_type='ovarian', dt=kc)
-    load(paste0(scriptdir,'/ref/ov.B1.RDa'))
-    pred <- with(ov.B1, pamr.predict(m, newx=as.matrix(sg[1:3248,-1:-2]), 
-      threshold=delta[sel],type='posterior'))[,2]
-    }
-
-    if (sample_type=='ovarian' & cls=='b2') {
-    # flow 5 ovarian BRCA2 with platform correction
-    # fill missings by linear interpolation
-    kc <- fillMat(kc[1:3248,])
-    # platformcorrection ovarian
-    kc <- correctDataset(kc[1:3248,], sample_type='ovarian', filedir=paste0(scriptdir,'/ref'))
-    # now only uses segmentation from fixMissing2Centroid
-    sg <- fixMissing2Centroid(cls=cls,sample_type='ovarian', dt=kc)
-    load(paste0(scriptdir,'/ref/ov.B2.RDa'))      
-    pred <- with(ov.B2, pamr.predict(m, newx=as.matrix(sg[1:3248,-1:-2]), 
-      threshold=delta[sel], type='posterior'))[,2]
-    }
-  print('finished legacy pipeline')
-}
- 
 # return variations of the ratios and segments for plotting/classifation outside of the fixed pipelines
 
 # platform correction, segmentation and classification can't handle NAs. Due to correlation between neighbouring locations
@@ -432,14 +384,13 @@ if (legacy_pipeline) {
 # (no effect of the probe for classifcation). For breast cancer this is handles in fixMissing2Centroid. For ovarian cancer
 # in principle is handled by linear interpolation. 
 # we save a matrix of missing values so breast cancer can be corrected using existing functions and for qc for ovarian cancer
-if (! legacy_pipeline) {  
   print('start pipeline with platform correction')
   missing_mat <- is.na(as.matrix(kc))
 
   kc <- fillMat(kc)
 
   if (correct_platform) {
-    kc <- correctDataset(kc, sample_type, filedir=paste0(scriptdir,'/ref'))
+    kc <- correctDataset(kc, sample_type, filedir=scriptdir)
   }
   print('corrected dataset')
 
@@ -479,16 +430,15 @@ if (! legacy_pipeline) {
   } else if (cls == 'b2' && sample_type=='breast') {
     pred <- apply(kc[,-1:-2], 2, b2704)  
   } else if (cls == 'b1' &&  sample_type=='ovarian') {
-    load(paste0(scriptdir,'/ref/ov.B1.RDa'))
+    load(paste0(scriptdir,'/ov.B1.RDa'))
     pred <- with(ov.B1, pamr.predict(m, newx=as.matrix(sg[1:3248,-1:-2]), 
       threshold=delta[sel],type='posterior'))[,2]
   } else if (cls == 'b2' &&  sample_type=='ovarian') {
-    load(paste0(scriptdir,'/ref/ov.B2.RDa'))
+    load(paste0(scriptdir,'/ov.B2.RDa'))
     pred <- with(ov.B2, pamr.predict(m, newx=as.matrix(sg[1:3248,-1:-2]), 
       threshold=delta[sel],type='posterior'))[,2]
   } 
   print('created predictions')
-}
 
 if (exists('ratb2')) {
   ratios <- as.data.frame(ratb2[,-1:-2]);
@@ -497,11 +447,11 @@ if (exists('ratb2')) {
 }
 segments <- as.data.frame(sg[,-1:-2]);
 
-write.table(ratios, file = paste0(outcls, gsub("\\.txt","", basename(file)), ".ratios-", cls,'-',sample_type,'-',legacy_pipeline,'-',correct_platform,'-',missing2centroid, ".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
-write.table(segments, file = paste0(outcls, gsub("\\.txt","", basename(file)), ".segments-", cls,'-',sample_type,'-',legacy_pipeline,'-',correct_platform,'-',missing2centroid ,".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
+write.table(ratios, file = paste0(outbase, ".ratios-", outbelong, ".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
+write.table(segments, file = paste0(outbase, ".segments-", outbelong ,".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
 
 pred.out <- data.frame(sample_id = colnames(ratios), class_probability=round(pred,3))
-write.table(pred.out, file = paste0(outcls, gsub("\\.txt","", basename(file)), ".pred.", "-", cls,'-',sample_type,'-',legacy_pipeline,'-',correct_platform,'-',missing2centroid ,".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
+write.table(pred.out, file = paste0(outbase, ".pred-", outbelong ,".tsv"), quote = FALSE, row.names = FALSE, sep = "\t")
 
 print('wrote output files')
 

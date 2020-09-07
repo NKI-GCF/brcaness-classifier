@@ -35,13 +35,13 @@ if (outbase != "") {
 
   f <- findCovFiles(pattern=paste0(".*counts-", bw, "000-q", mapq, ".txt"))
   stopifnot(length(f) > 0)
-  gc <- read.delim(paste0("/tmp/gccontent-", bw, "000.txt"))[,c(1,2,3,5)]
+  gc <- read.delim(paste0("/app/gccontent-", bw, "k.txt"))[,c(1,2,3,5)]
   colnames(gc) <- c("chr","start","end","gc")
 
   data <- loadCovData(f, gc=gc, mappa=mappability, black=black, exclude="MT", datacol=4)
   print("finished loading data")
 
-  colnames(data$cov) <- gsub(paste0("-s-counts-", bw, "000-q", mapq, ".txt"),"",f)
+  colnames(data$cov) <- gsub(paste0("-counts-", bw, "000-q", mapq, ".txt"),"",f)
   #fix the names
   sampnames <- paste(sub("(_[CGAT]{6,}).*","\\1", sub("^.*/","", colnames(data$cov)), perl=T), paste0(round(colSums(data$cov) / 1e6,1),"M"), sep="_")
   colnames(data$cov) <- sampnames
@@ -138,7 +138,7 @@ if (outbase != "") {
   dir <- getwd()
   write.table(tab, file=paste0(outbase, ".txt"), sep="\t", quote=F, row.names=F)
 
-sessioInfo()
+sessionInfo()
 sink(type="message")
 sink()
 

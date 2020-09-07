@@ -5,7 +5,7 @@ Use documentation [here](https://docs.docker.com/get-docker/) or provided by you
 
 ## Building the docker image
 Building takes a few hours, the first time. Rebuilding is required for every significant Dockerfile change,
-or for script file changes. For the latter only, build time is much less.
+or for script file changes. For the latter, build time is much shorter.
 
 Dependent on your docker configuration, you may have to add the flag '--network=host'.
 
@@ -15,46 +15,50 @@ docker build --tag=ovabrca:$tag .
 ```
 
 ======
-
 ## Data access for the container
 
-One should never link sensitive parts of a filesystem in a docker container. Read about security [here](https://docs.docker.com/engine/security/security/#docker-daemon-attack-surface).
+When the docker image is run, the -v option allows to bind mount a directory to a docker container. This docker requires a ref and output mount and input unless continuing with previously processed data..
 
-### A configuration and empty output directory are required
-```bash
-mkdir -p config/ output/
-```
+Docker does not follow file permissions so do not expose sensitive parts of a filesystem to a docker container. Read about security [here](https://docs.docker.com/engine/security/security/#docker-daemon-attack-surface).
 
-### If the fastq files are in the current directory, then use:
+The ref mount should contain a fasta which is, if not already, indexed - initialized for bwa - the first time the docker is run.
 
-```bash
-input="-v `pwd`:/input"
-```
-
-### A docker container cannot follow symlinks. You can hard link files - if they are on the same physical disk.
-### You can add nested docker mounts in input/ or you can (bind) mount files. in the input/ directory
+The primary assembly should be unchanged per GRCh38 releases; the docker runs checks to confirm this.
 
 ```bash
-mkdir -p input/
-input="-v `pwd`/input:/input"
+cd $your_dedicated_genome_directory
+wget ftp://ftp.ensembl.org/pub/release-101/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
+gunzip Homo_sapiens.GRCh38.dna.primaryassembly.fa.gz
+reference="-v `pwd`:/ref:rw"
+cd -
 ```
 
-### Even if fastq files were sequenced under the same filename across runs, they can be linked / mounted via input subdirectories.
+An output directory is required
+```bash
+mkdir -p output/
+```
 
-### to add fastq files, symlinked in current directory, with raw data in a standard Illumina directory structure:
+An input mount is required if processing from raw data.
+```bash
+input="-v $path_to_fastq_files:/input:ro"
+```
+
+If intermediate files (cram files, counts or the classifier text files) are present and survive consistancy checks, processing is continued from there.
+
+A docker container cannot follow symlinks. You can hard link files - if they are on the same physical disk. For samples sequenced with the same name in different runs docker mounts can be nested in input/ subdirectories; e.g.:
 
 ```bash
 while read d; do
   p=input/$(basename $d)
   mkdir $p
   input="$input -v $d:/$p:ro"
-done < <(ls -1 *.fastq.gz | xargs -n 1 readlink | xargs -n 1 dirname | xargs -n 1 dirname | sort -u)
+done < <(ls -1 *.fastq.gz | xargs -n 1 readlink | sed -r 's~/Samples_[^/]+/[^/]+$~~' | sort -u)
 ```
 
 ## Configuration files
 
-### To resolve file(s) per sample a tab-separated file containing regular expression and sample basename:
-**config/files.txt**
+To resolve file(s) per sample a tab-separated file containing regular expression and sample basename can be added to the input or output directory, e.g.:
+**input/files.txt**
 
 ### example
 ```
@@ -62,8 +66,9 @@ done < <(ls -1 *.fastq.gz | xargs -n 1 readlink | xargs -n 1 dirname | xargs -n 
 .*5610_8_CF13235_.*.gz  5610_8_CF13235
 ```
 
-### For the pipeline settings:
-**config/config.txt**
+If not present the provided /input directory will be queried for .fastq.gz files and output samplenames will consist of the the filename part before an index sequence 6 to 8bp in length.
+
+To adjust pipeline parameters, use docker run with --env PARAM=value or --env-file=**config.txt** in the docker run command. See env_options.txt for parameters, their defaults and allowed alternative settings (variables therein are assigned as in a [bash] shell - don't use whitespace)
 
 ### example
 ```
@@ -78,11 +83,7 @@ TYPE=breast # / ovarian
 # b1.371 : breast BRCA1 371 probe classifier
 # b1 : for ovarian cancer BRCA1 classifier
 # b2 : for breast or ovarian cancer BRCA2 classifier
-BRCA_NUM=b1.191 #/ b1.371 / b1 / b2 
-
-# legacy pipeline (according to Schouten et al Mol Oncol 2015), fixed pipeline
-# for non-legacy pipeline, options are controlled by CPFCOR and SETM2C
-LEGACY=FALSE # / TRUE
+BRCA_CLASS=b1.191 #/ b1.371 / b1 / b2
 
 # CPFCOR: apply crossplatform correction
 CPFCOR=TRUE # / FALSE
@@ -91,44 +92,30 @@ CPFCOR=TRUE # / FALSE
 # linear interpolation of missing values (FALSE)
 SETM2C=FALSE # / TRUE
 
-# outcls : output directory of classification. Note that trailing / is required for properly constructing
-# the directory name: e.g. /output/cls/
+# OUTCLS : output directory of classification. Note that trailing / is required for properly constructing
+# the directory name: e.g. cls/
 
-BLACKLIST=GRCh38-blacklist-merged.bed
 TAG=-GRCh38-blacklist-merged
-```
-
-# To continue e.g. when more files were added later, you can use:
-```
-CONTINUE=true
-CHECKSUM=false
 ```
 
 ======
 
 ## Running the container
-### path to bwa indexed fasta files
 
-bwaindex_dir=$path_to/Homo_sapiens.GRCh38/index/bwa/
-
-# full paths are required in docker
-path="`pwd`"
-
-### This runs the container 
+### This runs the container  (full paths are required in docker)
 docker run --rm -u $UID:$GROUPS \
-  -v $path/output/:/output:rw \
+  -v $path_to_output:/output:rw \
   $input \
-  -v $bwaindex_dir:/ref:ro \
-  -v $path/config:/config:ro \
+  $reference \
+  --env-file=config.txt \
   ovabrca:$tag
 
-## container development
-### If possible without docker rebuilding, one can mount the app/ directory, adapt and run scripts manually.
+## ito execute manually or for development that does not require new software
 docker run --rm -t -i -u $UID:$GROUPS \
-  -v $path/output/:/output:rw \
+  -v $path_to_output:/output:rw \
   $input \
-  -v $bwaindex_dir:/ref:ro \
-  -v $path/config:/config:ro \
-  -v $path/:/app:rw \
+  $reference \
+  -v $path_to_app:/app:rw \
+  --env-file=config.txt \
   ovabrca:$tag bash
 

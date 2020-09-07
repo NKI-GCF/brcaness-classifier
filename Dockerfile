@@ -1,13 +1,16 @@
 FROM debian:stretch-slim
 # (c) Roel Kluin r.kluin@nki.nl GPL-2.0
 
-COPY install/nkiBRCA_1.00.tar.gz /tmp
-
+# 4 tested variables should be included in docker build via e.g. --build-arg BWA_VERSION=0.7.17
 RUN BWA_VERSION=0.7.17 \
+  && KBIN_SIZE=20 \
+  && MINQUAL=15 \
   && HTSLIB_VERSION=1.10.2 \
   && SAMTOOLS_VERSION=1.10 \
   && BEDTOOLS_VERSION=2.29.2 \
   && R_VERSION=3.5.1 \
+  && CGHSEG_VERSION=1.0.5 \
+  && NKI_BRCA_VERSION=1.00 \
 #
 # day before bioconductor 3.8 released. This depracated data.frame to IRanges, required for cghseg
   && BUILD_DATE=2018-10-30 \
@@ -64,7 +67,7 @@ RUN BWA_VERSION=0.7.17 \
     AWK=/usr/bin/awk \
     CFLAGS="-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -Wdate-time -D_FORTIFY_SOURCE=2 -g" \
     CXXFLAGS="-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -Wdate-time -D_FORTIFY_SOURCE=2 -g" \
-  ./configure --with-readline --with-blas --disable-nls \
+   ./configure --with-readline --with-blas --disable-nls \
 #
   && make \
 #
@@ -139,6 +142,7 @@ RUN BWA_VERSION=0.7.17 \
 #
   && cd /tmp && rm -r bedtools2 \
 #
+#
 ################## R packages #######################
 #
 ## install packages from date-locked MRAN snapshot of CRAN
@@ -149,38 +153,37 @@ RUN BWA_VERSION=0.7.17 \
   && echo "options(repos = c(CRAN='$MRAN'), download.file.method = 'libcurl')" >> /usr/local/lib/R/etc/Rprofile.site \
 #
 ## install packages per one package should ensure depenendencies are installed as well
- && Rscript -e "install.packages('BiocManager', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'));\
- BiocManager::install('BiocVersion', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'), update=FALSE);\
- BiocManager::install('BiocGenerics', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'), update=FALSE);\
- BiocManager::install('S4Vectors', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'), update=FALSE);\
- BiocManager::install('BiocVersion', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'), update=FALSE);\
- BiocManager::install('IRanges', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'), update=FALSE);\
- install.packages('gtools', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'));\
- install.packages('readxl', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'));\
- install.packages('RODBC', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data')); \
- install.packages('rjson', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data')); \
- install.packages('optparse', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data')); \
- install.packages('pamr', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data')); \
- install.packages('zoo', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'));"
-#
+  && Rscript -e "install.packages('BiocManager', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'));\
+   BiocManager::install('BiocVersion', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'), update=FALSE);\
+   BiocManager::install('BiocGenerics', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'), update=FALSE);\
+   BiocManager::install('S4Vectors', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'), update=FALSE);\
+   BiocManager::install('BiocVersion', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'), update=FALSE);\
+   BiocManager::install('IRanges', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'), update=FALSE);\
+   BiocManager::install('GenomicRanges', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'), update=FALSE);\
+   install.packages('gtools', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'));\
+   install.packages('readxl', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'));\
+   install.packages('RODBC', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data')); \
+   install.packages('rjson', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data')); \
+   install.packages('optparse', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data')); \
+   install.packages('pamr', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data')); \
+   install.packages('zoo', INSTALL_opts = c('--no-html', '--no-help', '--no-docs', '--no-demo', '--no-multiarch', '--no-data'));" \
 #
 ################## cghseg #######################
 #
-RUN wget https://cran.r-project.org/src/contrib/Archive/cghseg/cghseg_1.0.5.tar.gz \
-  && R CMD INSTALL --no-html --no-docs --no-help --no-demo --no-multiarch --no-data cghseg_1.0.5.tar.gz \
-  && R CMD INSTALL --no-html --no-docs --no-help --no-demo --no-multiarch --no-data /tmp/nkiBRCA_1.00.tar.gz \
-  && rm cghseg_* /tmp/nkiBRCA* \
+  && wget https://cran.r-project.org/src/contrib/Archive/cghseg/cghseg_${CGHSEG_VERSION}.tar.gz \
+  && R CMD INSTALL --no-html --no-docs --no-help --no-demo --no-multiarch --no-data cghseg_${CGHSEG_VERSION}.tar.gz \
+  && rm -rf cghseg_${CGHSEG_VERSION}* \
 #
-
 ################## nkiBRCA #######################
 #
-		&& wget http://ccb.nki.nl/software/nkibrca/nkiBRCA_1.00.tar.gz \
-		&& R CMD INSTALL --no-html --no-docs --no-help --no-demo --no-multiarch --no-data nkiBRCA_1.00.tar.gz \
-		&& rm nkiBRCA_1.00* \
+  && wget http://ccb.nki.nl/software/nkibrca/nkiBRCA_1.00.tar.gz \
+  && R CMD INSTALL --no-html --no-docs --no-help --no-demo --no-multiarch nkiBRCA_1.00.tar.gz \
+  && rm -rf nkiBRCA_${NKI_BRCA_VERSION}* \
 #
-		
+#
 ################## clean up #########################
 # packages with + appended are kept
+#
   && apt-get remove --purge -y $BUILDDEPS libblas3+ libgomp1+ \
 #
   && apt-get autoremove -y \
@@ -188,11 +191,12 @@ RUN wget https://cran.r-project.org/src/contrib/Archive/cghseg/cghseg_1.0.5.tar.
 #
   && rm -rf /var/lib/apt \
 #
+#
 ################## command #########################
 #
   && mkdir /app
 
-COPY *.sh *.R ref /app/
+COPY *.sh env_options.txt *.R ref /app/
 
 CMD ["/app/align_count_and_classify.sh"]
 

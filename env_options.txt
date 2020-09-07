@@ -1,0 +1,35 @@
+#Parameter default  match     [if experimental, what's affected]  # comments
+
+PRODUCTION TRUE     FALSE                    # default: refuse experimental settings
+
+CN         NKI      [A-Za-z0-9_.-]{2,10}     # Company name; readgroups and output name
+BRCA_CLASS b1.191   (b\.371|b1|b2)           # see README.md
+TYPE       breast   ovarian
+OUTCLS     cls      [A-Za-z0-9_.-]{3,10}     # output subdirectory for classification
+TAG        -GRCh38-blacklist-merged -[A-Za-z0-9._-]+ #postfix for NKI_1m file
+
+# keep mem below your system's or this may crash, `free -h' for what's available. At least 1G is required.
+MEM        2G       [1-9][0-9]*G
+PARALLEL   2        [1-9][0-9]{1,3}          # parallel * threads should be < CPU(s)
+THREADS    4        [1-9][0-9]{1,3}          # ..but mind other users, same for MEM
+
+DEBUG            FALSE     TRUE              # print executed commands
+
+# The filename can differ, if checksum and fai match, the sequence and order of contigs is ok.
+FASTA      Homo_sapiens.GRCh38.dna.primary_assembly.fa    [A-Za-z0-9_.-]{1,64}
+
+#--[  EXPERIMENTAL options below, setting to non-default require PRODUCTION=FALSE  ]--#
+SETM2C     FALSE     TRUE        classifier  # see README.md
+CPFCOR     TRUE      FALSE       classifier  # crossplatform correction
+PL         Illumina  [A-Za-z0-9_.-]{3,10} classifier  # supported platform; @RG
+BLACKLIST  GRCh38-blacklist-merged.bed [A-Za-z0-9_.-]{1,256}\.bed classifier # blacklisted regions
+
+KBIN_SIZE  20        [1-9][0-9]{1,3}      mappability
+SEQLEN     65        [1-9][0-9]{1,3}      mappability
+MINQUAL    15        [0-9]{1,2}           mappability
+
+# if any of these change all bets are off..
+CHROMINFO  /app/chromInfo.txt     /input/chromInfo.txt     pipeline
+BINS       /app/windows-20k.txt   /input/windows-20k.txt   pipeline
+GCCONT     /app/gccontent-20k.txt /input/gccontent-20k.txt pipeline
+CHECKSUM   257604babc88d1a24bffa13f41c39172681c000a1dd396b32ebdcde0d1fa78f6 [a-f0-9]{64} pipeline
