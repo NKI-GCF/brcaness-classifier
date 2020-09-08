@@ -91,8 +91,8 @@ if (outbase != "") {
   fns <- paste(colnames(rd$ratios), "txt", sep=".")
   writeAllNexusNormalized(rd, filenames = fns, path=dn)
 
+  pdfname <- paste0("/output/all-varmapa-", bw, "K.pdf")
   if(!file.exists(pdfname)) {
-    pdfname <- paste0("/output/all-varmapa-", bw, "K.pdf")
 
     print(pdfname)
     pdf(pdfname, width=0, height=0, paper="A4r")
