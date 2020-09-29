@@ -375,16 +375,12 @@ kc <- data.frame(chrom=plf$chrom, maploc=plf$maploc, comb[,-1:-17])
 
 print('created KC dataframe')
 
-# fixed pipelines (these could also be called with arguments in the process.sh and the correct ratio/segment output
-# of variations below (line 285)):
-# return variations of the ratios and segments for plotting/classifation outside of the fixed pipelines
-
 # platform correction, segmentation and classification can't handle NAs. Due to correlation between neighbouring locations
 # linear interpolation is reasonable, alternative is to set the missing probe to the  average of the class centroids 
 # (no effect of the probe for classifcation). For breast cancer this is handles in fixMissing2Centroid. For ovarian cancer
 # in principle is handled by linear interpolation. 
 # we save a matrix of missing values so breast cancer can be corrected using existing functions and for qc for ovarian cancer
-  print('start pipeline with platform correction')
+  print('start pipeline')
   missing_mat <- is.na(as.matrix(kc))
 
   kc <- fillMat(kc)
@@ -422,7 +418,7 @@ print('created KC dataframe')
   }
   print('segmented')
 
-  # classifiers could be run here to also produce pred.
+  # classifiers 
   if (cls == 'b1.191' && sample_type=='breast') {
     pred <- apply(kc[,-1:-2], 2, b1191)  
   } else if (cls == 'b1.371' && sample_type=='breast') {
