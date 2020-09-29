@@ -159,7 +159,7 @@ elif [ -d /input/ ]; then
   find /input/ -type f -name "*.fastq.gz" | sed 's~/input/~~' > /tmp/files.txt
 
   while read f; do
-    [ -z "$(zgrep -m 2 "^.*$" "$f" | sed -n -r "/^[ACTGN]{$SEQLEN}$/p")" ] &&
+    [ -z "$(zgrep -m 2 "^.*$" "/input/$f" | sed -n -r "/^[ACTGN]{$SEQLEN}$/p")" ] &&
        die "$f is not sequence length $SEQLEN"
   done < <(cat /tmp/files.txt)
 else

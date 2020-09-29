@@ -22,13 +22,11 @@ The ref mount should contain a fasta that is bwa indexed, meaning initialized fo
 
 ```bash
 cd $your_dedicated_genome_directory
-wget ftp://ftp.ensembl.org/pub/release-101/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
+wget ftp://ftp.ensembl.org/pub/release-76/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
 gunzip Homo_sapiens.GRCh38.dna.primaryassembly.fa.gz
 reference="-v `pwd`:/ref:rw"
 cd -
 ```
-
-The primary assembly should be unchanged per GRCh38 Ensembl releases; when running the docker container checks should fail otherwise.
 
 ## Data access for the container
 
