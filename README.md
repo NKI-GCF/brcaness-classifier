@@ -95,15 +95,18 @@ TAG=-GRCh38-blacklist-merged
 
 ## Running the container
 
-### This runs the container  (full paths are required in docker)
+This runs the container  (full paths are required in docker)
+```
 docker run --rm -u $UID:$GROUPS \
   -v $path_to_output:/output:rw \
   $input \
   $reference \
   --env-file=config.txt \
   ovabrca:$tag
+```
 
-## ito execute manually or for development that does not require new software
+To execute manually in a shell, or for development
+```
 docker run --rm -t -i -u $UID:$GROUPS \
   -v $path_to_output:/output:rw \
   $input \
@@ -111,8 +114,10 @@ docker run --rm -t -i -u $UID:$GROUPS \
   -v $path_to_app:/app:rw \
   --env-file=config.txt \
   ovabrca:$tag bash
+```
 
-## 
+51bp on GRCh38, workaround for old samples, requires mappability file.
+```
 docker run --rm -u $UID:$GROUPS \
   -v $path/output/:/output:rw \
   $input \
@@ -122,3 +127,4 @@ docker run --rm -u $UID:$GROUPS \
   --env TAG=-test \
   --env SEQLEN=51 \
   ovabrca:0.9
+```
