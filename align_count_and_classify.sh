@@ -21,9 +21,9 @@ while read param default alt_regex affected comment; do
   elif [ "${!param}" != "$default" ]; then
     warn "$param has value ${!param}, default is $default"
     [[ "${!param}" =~ ^$alt_regex$ ]] || die "Invalid value, should be $default or match /^$alt_regex$/"
-    if [ "${affected:0:1}" != "#" ]; then
+    if [ -n "${affected}" -a "${affected:0:1}" != "#" ]; then
       warn "^^^^---------- modification of this parameter is EXPERIMENTAL, the $affected may be affected!"
-      [ $PRODUCTION = TRUE ] && exit 1
+      [ "$PRODUCTION" = TRUE ] && exit 1
     fi
   fi
 done < <(sed -n -r '/^( *#.*)?$/b;p' /app/env_options.txt)
@@ -34,8 +34,8 @@ done < <(sed -n -r '/^( *#.*)?$/b;p' /app/env_options.txt)
 # 2) make sure alignment prerequisites are present
 
 # mount points available and correct permissions?
-[ -d /input -a -r /input -a ! -w /input ]  || die "Required: -v \$path_to_input:/input:ro"
-[ -d /output -a -r /output -a -w /output ] || die "Required: -v \$path_to_output:/output:rw"
+[ -d /input -a -r /input -a ! -w /input ]  || die "Required: -v \$path_to_input:/input:ro (check dir is readable)"
+[ -d /output -a -r /output -a -w /output ] || die "Required: -v \$path_to_output:/output:rw (check dir is read-write)"
 
 [ "$(ls -1a /output | wc -l)" -ne 2 ] && warn "Ouput dir is not empty"
 
@@ -117,7 +117,7 @@ rm_part() {
   for f in "$@"; do
     [ -f "$f" ] || continue;
     warn "Replacing outdated or broken file:\n$f"
-    [ $REMOVE_PARTIAL = TRUE ] || die "Not replacing file(s) without --env REMOVE_PARTIAL=TRUE"
+    [ "$REMOVE_PARTIAL" = TRUE ] || die "Not replacing file(s) without --env REMOVE_PARTIAL=TRUE"
     [ "$f" -nt "$lock" ] && die "File $f was created twice in the pipeline. files.txt duplicates?"
     rm "$f"
   done
