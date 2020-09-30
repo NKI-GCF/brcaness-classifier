@@ -70,20 +70,20 @@ THREADS=4
 PARALLEL=2
 
 # breast or ovarian cancer
-TYPE=breast # / ovarian
+TYPE=breast
 
 # b1.191 : breast BRCA1 191 probe classifier
 # b1.371 : breast BRCA1 371 probe classifier
 # b1 : for ovarian cancer BRCA1 classifier
 # b2 : for breast or ovarian cancer BRCA2 classifier
-BRCA_CLASS=b1.191 #/ b1.371 / b1 / b2
+BRCA_CLASS=b1.191
 
 # CPFCOR: apply crossplatform correction
-CPFCOR=TRUE # / FALSE
+CPFCOR=TRUE
 
 # SETM2C: set missing values to centroid mean (TRUE, null influence of the probe) or 
 # linear interpolation of missing values (FALSE)
-SETM2C=FALSE # / TRUE
+SETM2C=FALSE
 
 # OUTCLS : output directory of classification. Note that trailing / is required for properly constructing
 # the directory name: e.g. cls/
