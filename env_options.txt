@@ -10,8 +10,8 @@ TAG        -GRCh38-blacklist-merged -[A-Za-z0-9._-]+ #postfix for NKI_1m file
 
 # keep mem below your system's or this may crash, `free -h' for what's available. At least 1G is required.
 MEM        2G       [1-9][0-9]*G
-PARALLEL   2        [1-9][0-9]{1,3}          # parallel * threads should be < CPU(s)
-THREADS    4        [1-9][0-9]{1,3}          # ..but mind other users, same for MEM
+PARALLEL   2        [1-9][0-9]{0,3}          # parallel * threads should be < CPU(s)
+THREADS    4        [1-9][0-9]{0,3}          # ..but mind other users, same for MEM
 
 DEBUG            FALSE     TRUE              # print executed commands
 
@@ -24,8 +24,8 @@ CPFCOR     TRUE      FALSE       classifier  # crossplatform correction
 PL         Illumina  [A-Za-z0-9_.-]{3,10} classifier  # supported platform; @RG
 BLACKLIST  GRCh38-blacklist-merged.bed [A-Za-z0-9_.-]{1,256}\.bed classifier # blacklisted regions
 
-KBIN_SIZE  20        [1-9][0-9]{1,3}      mappability
-SEQLEN     65        [1-9][0-9]{1,3}      mappability
+KBIN_SIZE  20        [1-9][0-9]{0,3}      mappability
+SEQLEN     65        [1-9][0-9]{0,3}      mappability
 MINQUAL    15        [0-9]{1,2}           mappability
 
 # if any of these change all bets are off..
