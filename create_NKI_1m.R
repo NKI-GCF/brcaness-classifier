@@ -99,7 +99,7 @@ if (outbase != "") {
     par(mfrow=c(1,1))
     for(i in seq.int(1,ncol(rd$ratios),4)) {
       for(p in i:min((i+3),ncol(rd$ratios))) {
-        plotCNV(rd[data$anno$chr %in% c(1:22, "X"),], sample=p, pch=".", main=colnames(rd$ratios)[p],  ylim=c(-4,4))
+        plotCNV(rd[data$anno$chr %in% c(1:22, "X")], sample=p, pch=".", main=colnames(rd$ratios)[p],  ylim=c(-4,4))
       }
       if(dev.capabilities()$locator) readline()
     }
