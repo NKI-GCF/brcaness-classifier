@@ -167,7 +167,7 @@ else
 fi
 
 while read glob SM LB ID; do
- while [ $(jobs -p | wc -w) -gt $PARALLEL ]; do
+ while [ $(jobs -p | wc -w) -ge $PARALLEL ]; do
   while read p; do
     # if signal cannot be sent process is finished, then get status code
     kill -0 $p 2> /dev/null || wait $p || die "Error ocurred: $?"
