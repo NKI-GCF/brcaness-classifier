@@ -69,8 +69,8 @@ if (outbase != "") {
     rd$ratios[,i] <- rd$ratios[,i] - median(rd$ratios[,i], na.rm=TRUE)
   }
 
-  for (chr in c(1:22, "X", "Y")) {
-    pdfname <- paste0("/output/chr", chr ,"-varmapa-", bw, "K.pdf")
+  for (chr in c(1:22, "X")) {
+    pdfname <- paste0("/output/chr", chr ,"-varmappa-", bw, "K.pdf")
     if(!file.exists(pdfname)) {
       print(pdfname)
       pdf(pdfname, width=0, height=0, paper="A4r")
@@ -86,12 +86,12 @@ if (outbase != "") {
   }
 
   # create Nexus data
-  dn <- paste0("/output/singlechannel_mapa.2_ratios", bw, "000")
+  dn <- paste0("/output/singlechannel_mappa.2_ratios", bw, "000")
   dir.create(dn, showWarnings=F)
   fns <- paste(colnames(rd$ratios), "txt", sep=".")
   writeAllNexusNormalized(rd, filenames = fns, path=dn)
 
-  pdfname <- paste0("/output/all-varmapa-", bw, "K.pdf")
+  pdfname <- paste0("/output/all-varmappa-", bw, "K.pdf")
   if(!file.exists(pdfname)) {
 
     print(pdfname)
@@ -99,7 +99,7 @@ if (outbase != "") {
     par(mfrow=c(1,1))
     for(i in seq.int(1,ncol(rd$ratios),4)) {
       for(p in i:min((i+3),ncol(rd$ratios))) {
-        plotCNV(rd[data$anno$chr %in% c(1:22, "X")], sample=p, pch=".", main=colnames(rd$ratios)[p],  ylim=c(-4,4))
+        plotCNV(rd[rd$anno$chr %in% c(1:22, "X")], sample=p, pch=".", main=colnames(rd$ratios)[p], ylim=c(-4,4))
       }
       if(dev.capabilities()$locator) readline()
     }
