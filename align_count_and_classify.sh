@@ -34,7 +34,9 @@ done < <(sed -n -r '/^( *#.*)?$/b;p' /app/env_options.txt)
 # 2) make sure alignment prerequisites are present
 
 # mount points available and correct permissions?
-[ -d /input -a -r /input -a ! -w /input ]  || die "Required: -v \$path_to_input:/input:ro (check dir is readable)"
+if [ -d /input ]; then
+    [ -r /input -a ! -w /input ]  || die "Required: -v \$path_to_input:/input:ro (check dir is readable)"
+fi
 [ -d /output -a -r /output -a -w /output ] || die "Required: -v \$path_to_output:/output:rw (check dir is read-write)"
 
 [ "$(ls -1a /output | wc -l)" -ne 2 ] && warn "Ouput dir is not empty"
@@ -138,12 +140,31 @@ if [ -r $files ]; then
   # a link does not work here
   cp $files /tmp/files.txt
   # pre check all files so we don't have to wait for an error.
-  while read f etc; do
-    [ -z "$f" ] && die "empty line in $files"
-    files=($(find /input/ -type f -regex "^/input/${f#^}"))
+  while read regex SM LB ID; do
+    [ -z "$regex" ] && die "empty regex in $files"
+    files=($(find /input/ -type f -regex "^/input/${regex#^}"))
     n=${#files[@]}
-    [ $n -eq 0 ] && die "$files: no files for $f found"
-    echo "found $n files for$f"
+
+    SM="${SM:-$(basename $regex | sed -r 's/_[ACTG]{6,}.*$//')}"
+    LB="${LB:-$SM}"
+    aln="/output/${LB}.cram"
+    ai="${aln}.crai"
+    mapqcount="/output/${LB}-counts-${KBIN_SIZE}000-q${MINQUAL}.txt"
+
+    for result in "$mapqcount" "$aln"; do
+        for precursor in "${files[@]}" "$ai"; do
+            if [ -e "$precursor" ]; then
+                [ "$precursor" -nt "$result" ] && rm_part "$result"
+            else
+                [ -n "$precursor" ] && rm_part "$result"
+            fi
+        done
+    done
+    [ -e "$mapqcount" ] && continue
+    [ -e "$aln" ] && continue
+
+    [ $n -eq 0 ] && die "$files: no files for $regex found"
+    echo "found $n files for $regex"
 
     for f in "${files[@]}"; do
       [ -z "$(zgrep -m 2 "^.*$" "$f" | sed -n -r "/^[ACTGN]{$SEQLEN}$/p")" ] &&
@@ -165,8 +186,9 @@ elif [ -d /input/ ]; then
 else
   find /output -type f -name "*.cram" | sed -r 's~/output/(.*)\.cram$~\1~' > /tmp/files.txt
 fi
+cp /tmp/files.txt /output/file_list.txt
 
-while read glob SM LB ID; do
+while read regex SM LB ID; do
  while [ $(jobs -p | wc -w) -ge $PARALLEL ]; do
   while read p; do
     # if signal cannot be sent process is finished, then get status code
@@ -175,7 +197,7 @@ while read glob SM LB ID; do
   sleep 1m
  done
 
- SM="${SM:-$(basename $glob | sed -r 's/_[ACTG]{6,}.*$//')}"
+ SM="${SM:-$(basename $regex | sed -r 's/_[ACTG]{6,}.*$//')}"
 
  LB="${LB:-$SM}"
 
@@ -205,10 +227,10 @@ while read glob SM LB ID; do
  if [ ! -f "$ai" ]; then
 
    rm_part "$aln" "/output/log/${LB}_alignment.log"
-   warn "Aligning $glob to $aln"
+   warn "Aligning $regex to $aln"
 
    # samples can be split over multiple runs / requests.
-   (find /input/ -type f -regex "^/input/${glob#^}" | xargs zcat |
+   (find /input/ -type f -regex "^/input/${regex#^}" | xargs zcat |
    bwa mem -M -t $THREADS -R "$RG" "$bwaindex" -|
    samtools sort -m $MEM -@ 4 --reference "$bwaindex" \
        --output-fmt cram,version=3.0 \
@@ -226,6 +248,7 @@ while read glob SM LB ID; do
 
  test_mapq_count "$mapqcount" || {
    [ $? -eq 2 ] && die "$mapqcount is truncated" || die "$mapqcount: only zeroes"
+   [ -e /output/rd_${KBIN_SIZE}.Rda ] && rm /output/rd_${KBIN_SIZE}.Rda
  }&
 
 done < <(egrep -v "^(#.*)?$" /tmp/files.txt)
